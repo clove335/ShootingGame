@@ -12,7 +12,7 @@ use crossterm::{
     terminal,
     QueueableCommand,
 };
-use crate::entities::{BulletOwner, EnemyKind, GameState, GameStatus, Level};
+use shooting_game::entities::{Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus, Level};
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ const C_HINT: Color = Color::DarkGrey;
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Render one complete frame.
-pub fn render<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     out.queue(terminal::Clear(terminal::ClearType::All))?;
 
     draw_border(out, state)?;
@@ -58,7 +58,7 @@ pub fn render<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
 
 // ── Border ────────────────────────────────────────────────────────────────────
 
-fn draw_border<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+fn draw_border<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     let w = state.width as usize;
     let h = state.height;
 
@@ -85,7 +85,7 @@ fn draw_border<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> 
 
 // ── HUD (row 0) ───────────────────────────────────────────────────────────────
 
-fn draw_hud<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     // Score — left
     out.queue(cursor::MoveTo(1, 0))?;
     out.queue(style::SetForegroundColor(C_HUD_SCORE))?;
@@ -122,7 +122,7 @@ fn draw_hud<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
 
 // ── Entities ──────────────────────────────────────────────────────────────────
 
-fn draw_player<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+fn draw_player<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     // Sprite (2 rows, 3 cols):
     //   ▲       ← row y      (tip)
     //  /|\      ← row y+1    (wings + fuselage)
@@ -145,7 +145,7 @@ fn draw_player<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> 
 
 fn draw_enemy<W: Write>(
     out: &mut W,
-    enemy: &crate::entities::Enemy,
+    enemy: &Enemy,
     play_bottom: i32, // bottom border row (= height - 2)
 ) -> std::io::Result<()> {
     let lx = (enemy.x - 1).max(0) as u16;
@@ -178,7 +178,7 @@ fn draw_enemy<W: Write>(
 
 fn draw_bullet<W: Write>(
     out: &mut W,
-    bullet: &crate::entities::Bullet,
+    bullet: &Bullet,
 ) -> std::io::Result<()> {
     match bullet.owner {
         BulletOwner::Player => {
@@ -197,7 +197,7 @@ fn draw_bullet<W: Write>(
 
 // ── Controls hint (last row) ──────────────────────────────────────────────────
 
-fn draw_controls_hint<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+fn draw_controls_hint<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     out.queue(cursor::MoveTo(1, state.height.saturating_sub(1)))?;
     out.queue(style::SetForegroundColor(C_HINT))?;
     out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
@@ -206,7 +206,7 @@ fn draw_controls_hint<W: Write>(out: &mut W, state: &GameState) -> std::io::Resu
 
 // ── Game-over overlay ─────────────────────────────────────────────────────────
 
-fn draw_game_over<W: Write>(out: &mut W, state: &GameState) -> std::io::Result<()> {
+fn draw_game_over<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     let score_line = format!("Final Score: {}", state.score);
     let lines: &[(&str, Color)] = &[
         ("╔══════════════════╗", Color::Red),

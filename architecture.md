@@ -39,4 +39,33 @@ ex.)
 - Use cargo for library management, tests (needless to say...)
 - I am not sure, but you can create usual Unit tests for functions, considering P
 
+### Tests Strategy (Implemented)
+- Runner: `cargo test` — Rust built-in test runner
+- No external test crates or frameworks
+- Test modules: `#[cfg(test)] mod tests` blocks inside each source file
+  (binary crate constraint — no lib.rs, no tests/ directory)
+- Files covered:
+    src/entities/mod.rs   — derive-trait contract tests
+    src/compute/mod.rs    — all pure game-logic functions (primary surface)
+    src/main.rs           — HeldKey struct (private; must be in-file)
+    src/display/mod.rs    — EXCLUDED (crossterm I/O side effects)
+- Seeded RNG for tick() tests:
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    let mut rng = StdRng::seed_from_u64(42);
+  StdRng is in the default std_rng feature — no Cargo.toml change needed
+- Backward-compatibility lock:
+    Tests explicitly verify that move_player_left / move_player_right are the
+    single source of truth for ← / A and → / D movement, and that the held-key
+    refactor (HeldKey + input thread) did not alter movement semantics
+- Categories:
+    1. Entity contract    — Clone/PartialEq/deep-copy correctness
+    2. Initialization     — init_state field values
+    3. Movement           — step size (2), boundary clamps, immutability
+    4. Shooting           — bullet spawn position, 3-bullet cap, mixed-owner cap
+    5. Simulation (tick)  — frame counter, bullet travel, enemy interval/purge,
+                            collision bounding box (3-wide × 2-tall), score, lives,
+                            game-over trigger, u32 saturation
+    6. HeldKey            — press/release/grace-period/key-repeat/edge cases
+
 

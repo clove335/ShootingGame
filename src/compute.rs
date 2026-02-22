@@ -1,13 +1,13 @@
 /// Pure game-logic functions.
 ///
 /// Every public function takes an immutable reference to the current
-/// `GameState` (and, where needed, an RNG handle) and returns a brand-new
-/// `GameState`.  Side effects are limited to the injected RNG.
+/// `EntireGameStateInfo` (and, where needed, an RNG handle) and returns a brand-new
+/// `EntireGameStateInfo`.  Side effects are limited to the injected RNG.
 
 use rand::Rng;
 
 use crate::entities::{
-    Bullet, BulletOwner, Enemy, EnemyKind, GameState, GameStatus, Level, Player,
+    Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus, Level, Player,
 };
 
 // ── Difficulty tables ────────────────────────────────────────────────────────
@@ -39,8 +39,8 @@ fn score_for(kind: &EnemyKind) -> u32 {
 // ── Constructors ─────────────────────────────────────────────────────────────
 
 /// Build the initial game state for a given level and terminal dimensions.
-pub fn init_state(level: Level, width: u16, height: u16) -> GameState {
-    GameState {
+pub fn init_state(level: Level, width: u16, height: u16) -> EntireGameStateInfo {
+    EntireGameStateInfo {
         player: Player {
             x: (width / 2) as i32,
             y: (height - 4) as i32, // one row higher to fit the 2-row sprite
@@ -59,9 +59,9 @@ pub fn init_state(level: Level, width: u16, height: u16) -> GameState {
 
 // ── Input-driven state transitions (pure) ───────────────────────────────────
 
-pub fn move_player_left(state: &GameState) -> GameState {
+pub fn move_player_left(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let new_x = (state.player.x - 2).max(1);
-    GameState {
+    EntireGameStateInfo {
         player: Player {
             x: new_x,
             ..state.player.clone()
@@ -70,9 +70,9 @@ pub fn move_player_left(state: &GameState) -> GameState {
     }
 }
 
-pub fn move_player_right(state: &GameState) -> GameState {
+pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let new_x = (state.player.x + 2).min(state.width as i32 - 2);
-    GameState {
+    EntireGameStateInfo {
         player: Player {
             x: new_x,
             ..state.player.clone()
@@ -82,7 +82,7 @@ pub fn move_player_right(state: &GameState) -> GameState {
 }
 
 /// Fire a bullet from the player — capped at 3 simultaneous bullets.
-pub fn player_shoot(state: &GameState) -> GameState {
+pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let active = state
         .bullets
         .iter()
@@ -98,7 +98,7 @@ pub fn player_shoot(state: &GameState) -> GameState {
     };
     let mut bullets = state.bullets.clone();
     bullets.push(new_bullet);
-    GameState {
+    EntireGameStateInfo {
         bullets,
         ..state.clone()
     }
@@ -108,7 +108,7 @@ pub fn player_shoot(state: &GameState) -> GameState {
 
 /// Advance the simulation by one frame.  All randomness comes through `rng`
 /// so callers control determinism (useful for tests with a seeded RNG).
-pub fn tick(state: &GameState, rng: &mut impl Rng) -> GameState {
+pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateInfo {
     let frame = state.frame + 1;
 
     // ── 1. Move bullets ──────────────────────────────────────────────────────
@@ -256,7 +256,7 @@ pub fn tick(state: &GameState, rng: &mut impl Rng) -> GameState {
         ..state.player.clone()
     };
 
-    GameState {
+    EntireGameStateInfo {
         player,
         enemies,
         bullets,

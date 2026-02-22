@@ -51,7 +51,7 @@ pub struct Bullet {
 /// The entire game state.  Cloneable so pure update functions can
 /// return a new copy without mutating the original.
 #[derive(Clone, Debug)]
-pub struct GameState {
+pub struct EntireGameStateInfo {
     pub player: Player,
     pub enemies: Vec<Enemy>,
     pub bullets: Vec<Bullet>,
