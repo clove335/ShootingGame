@@ -1,0 +1,12 @@
+[package]
+name = "shooting_game"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "shooting_game"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.27"
+rand = "0.8"
