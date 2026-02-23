@@ -1,6 +1,7 @@
 mod display;
 
 use std::io::{stdout, BufWriter, Write};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -22,6 +23,24 @@ use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
 
 const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 
+// ── High-score persistence ────────────────────────────────────────────────────
+
+fn high_score_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".shooting_game_score")
+}
+
+fn load_high_score() -> u32 {
+    std::fs::read_to_string(high_score_path())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn save_high_score(score: u32) {
+    let _ = std::fs::write(high_score_path(), score.to_string());
+}
+
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
 enum MenuResult {
@@ -32,6 +51,7 @@ enum MenuResult {
 fn show_menu<W: Write>(
     out: &mut W,
     rx: &mpsc::Receiver<Event>,
+    high_score: u32,
 ) -> std::io::Result<MenuResult> {
     out.queue(terminal::Clear(terminal::ClearType::All))?;
 
@@ -47,7 +67,18 @@ fn show_menu<W: Write>(
     out.queue(style::SetForegroundColor(Color::Cyan))?;
     out.queue(Print(title))?;
 
-    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy.saturating_sub(4)))?;
+    // High score display
+    if high_score > 0 {
+        let hs_str = format!("Best Score: {}", high_score);
+        out.queue(cursor::MoveTo(
+            cx.saturating_sub(hs_str.chars().count() as u16 / 2),
+            cy.saturating_sub(5),
+        ))?;
+        out.queue(style::SetForegroundColor(Color::Yellow))?;
+        out.queue(Print(&hs_str))?;
+    }
+
+    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy.saturating_sub(3)))?;
     out.queue(style::SetForegroundColor(Color::White))?;
     out.queue(Print("Select difficulty:"))?;
 
@@ -58,7 +89,7 @@ fn show_menu<W: Write>(
     ];
 
     for (i, (key, label, color, desc)) in options.iter().enumerate() {
-        let row = cy.saturating_sub(2) + i as u16;
+        let row = cy.saturating_sub(1) + i as u16;
         out.queue(cursor::MoveTo(cx.saturating_sub(10), row))?;
         out.queue(style::SetForegroundColor(Color::DarkGrey))?;
         out.queue(Print(format!("[{}] ", key)))?;
@@ -68,13 +99,28 @@ fn show_menu<W: Write>(
         out.queue(Print(format!(" — {}", desc)))?;
     }
 
-    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 2))?;
+    // Bonus item legend
+    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 3))?;
+    out.queue(style::SetForegroundColor(Color::DarkGrey))?;
+    out.queue(Print("Power-ups (catch falling items):"))?;
+
+    let bonus_info: &[(&str, Color, &str)] = &[
+        ("★", Color::Yellow,  " SpreadShot — 3-way fire"),
+        ("♥", Color::Magenta, " ExtraLife  — +1 life"),
+        ("!", Color::Cyan,    " RapidFire  — 6 bullets on screen"),
+    ];
+    for (i, (sym, color, desc)) in bonus_info.iter().enumerate() {
+        let row = cy + 4 + i as u16;
+        out.queue(cursor::MoveTo(cx.saturating_sub(10), row))?;
+        out.queue(style::SetForegroundColor(*color))?;
+        out.queue(Print(sym))?;
+        out.queue(style::SetForegroundColor(Color::DarkGrey))?;
+        out.queue(Print(*desc))?;
+    }
+
+    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 8))?;
     out.queue(style::SetForegroundColor(Color::DarkGrey))?;
     out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
-
-    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 4))?;
-    out.queue(style::SetForegroundColor(Color::DarkGrey))?;
-    out.queue(Print("[Q]  Quit"))?;
 
     out.queue(style::ResetColor)?;
     out.flush()?;
@@ -206,13 +252,22 @@ fn run<W: Write>(
     out: &mut W,
     rx: &mpsc::Receiver<Event>,
 ) -> std::io::Result<()> {
+    let mut high_score = load_high_score();
+
     loop {
-        match show_menu(out, rx)? {
+        match show_menu(out, rx, high_score)? {
             MenuResult::Quit => break,
             MenuResult::Start(level) => {
                 let (width, height) = terminal::size()?;
-                let mut state = init_state(level, width, height);
+                let mut state = init_state(level, width, height, high_score);
                 let quit = game_loop(out, &mut state, rx)?;
+
+                // Persist new high score if beaten
+                if state.score > high_score {
+                    high_score = state.score;
+                    save_high_score(high_score);
+                }
+
                 if quit {
                     break;
                 }

@@ -7,7 +7,8 @@
 use rand::Rng;
 
 use crate::entities::{
-    Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus, Level, Player,
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo,
+    GameStatus, Level, Player,
 };
 
 // ── Difficulty tables ────────────────────────────────────────────────────────
@@ -36,10 +37,21 @@ fn score_for(kind: &EnemyKind) -> u32 {
     }
 }
 
+// ── Bonus-item constants ──────────────────────────────────────────────────────
+
+/// Frames between bonus-item drops.
+const BONUS_SPAWN_INTERVAL: u64 = 150;
+/// Frames between each downward step of a bonus item.
+const BONUS_MOVE_INTERVAL: u64 = 10;
+/// How many frames a timed power-up lasts (≈10 seconds at 30 FPS).
+const POWER_UP_DURATION: u32 = 300;
+/// Maximum lives the player can hold.
+const MAX_LIVES: u32 = 5;
+
 // ── Constructors ─────────────────────────────────────────────────────────────
 
 /// Build the initial game state for a given level and terminal dimensions.
-pub fn init_state(level: Level, width: u16, height: u16) -> EntireGameStateInfo {
+pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> EntireGameStateInfo {
     EntireGameStateInfo {
         player: Player {
             x: (width / 2) as i32,
@@ -48,7 +60,10 @@ pub fn init_state(level: Level, width: u16, height: u16) -> EntireGameStateInfo 
         },
         enemies: Vec::new(),
         bullets: Vec::new(),
+        bonus_items: Vec::new(),
+        active_power_up: None,
         score: 0,
+        high_score,
         level,
         status: GameStatus::Playing,
         frame: 0,
@@ -81,23 +96,49 @@ pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     }
 }
 
-/// Fire a bullet from the player — capped at 3 simultaneous bullets.
+/// Fire a bullet from the player.
+/// - Normal mode: 1 bullet, capped at 3 simultaneous player bullets.
+/// - SpreadShot power-up: 3-way spread, same cap of 3.
+/// - RapidFire power-up: 1 bullet, cap raised to 6.
 pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
+    let is_spread = matches!(&state.active_power_up, Some((BonusKind::SpreadShot, _)));
+    let is_rapid  = matches!(&state.active_power_up, Some((BonusKind::RapidFire,  _)));
+    let cap = if is_rapid { 6 } else { 3 };
+
     let active = state
         .bullets
         .iter()
         .filter(|b| b.owner == BulletOwner::Player)
         .count();
-    if active >= 3 {
+
+    if active >= cap {
         return state.clone();
     }
-    let new_bullet = Bullet {
-        x: state.player.x,
-        y: state.player.y - 1,
-        owner: BulletOwner::Player,
-    };
+
     let mut bullets = state.bullets.clone();
-    bullets.push(new_bullet);
+
+    if is_spread {
+        // Three bullets: left, center, right — skip any that would exceed the cap
+        let offsets: [i32; 3] = [-2, 0, 2];
+        for dx in offsets {
+            if bullets.iter().filter(|b| b.owner == BulletOwner::Player).count() >= cap {
+                break;
+            }
+            let bx = (state.player.x + dx).clamp(1, state.width as i32 - 2);
+            bullets.push(Bullet {
+                x: bx,
+                y: state.player.y - 1,
+                owner: BulletOwner::Player,
+            });
+        }
+    } else {
+        bullets.push(Bullet {
+            x: state.player.x,
+            y: state.player.y - 1,
+            owner: BulletOwner::Player,
+        });
+    }
+
     EntireGameStateInfo {
         bullets,
         ..state.clone()
@@ -238,12 +279,78 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         .filter(|e| e.y < state.height as i32 - 2)
         .collect();
 
-    // ── 7. Update player & status ─────────────────────────────────────────────
-    let new_lives = if player_hit {
+    // ── 7. Move bonus items ───────────────────────────────────────────────────
+    let bonus_items: Vec<BonusItem> = if frame % BONUS_MOVE_INTERVAL == 0 {
+        state
+            .bonus_items
+            .iter()
+            .filter_map(|b| {
+                let new_y = b.y + 1;
+                if new_y < state.height as i32 - 2 {
+                    Some(BonusItem { y: new_y, ..b.clone() })
+                } else {
+                    None // fell off the bottom without being caught
+                }
+            })
+            .collect()
+    } else {
+        state.bonus_items.clone()
+    };
+
+    // ── 8. Spawn a new bonus item ─────────────────────────────────────────────
+    let mut bonus_items = bonus_items;
+    if frame % BONUS_SPAWN_INTERVAL == 0 {
+        let x = rng.gen_range(2..(state.width as i32 - 2));
+        let kind = match rng.gen_range(0..3u32) {
+            0 => BonusKind::SpreadShot,
+            1 => BonusKind::ExtraLife,
+            _ => BonusKind::RapidFire,
+        };
+        bonus_items.push(BonusItem { x, y: 2, kind });
+    }
+
+    // ── 9. Tick down the active power-up ─────────────────────────────────────
+    let active_power_up = state.active_power_up.as_ref().and_then(|(kind, frames)| {
+        if *frames > 1 {
+            Some((kind.clone(), frames - 1))
+        } else {
+            None
+        }
+    });
+
+    // ── 10. Collision: player catches bonus items ──────────────────────────────
+    let mut extra_lives: u32 = 0;
+    let mut new_power_up = active_power_up;
+
+    let bonus_items: Vec<BonusItem> = bonus_items
+        .into_iter()
+        .filter(|b| {
+            let caught = (b.x - state.player.x).abs() <= 1
+                && (b.y == state.player.y || b.y == state.player.y + 1);
+            if caught {
+                match &b.kind {
+                    BonusKind::ExtraLife => {
+                        extra_lives += 1;
+                    }
+                    BonusKind::SpreadShot => {
+                        new_power_up = Some((BonusKind::SpreadShot, POWER_UP_DURATION));
+                    }
+                    BonusKind::RapidFire => {
+                        new_power_up = Some((BonusKind::RapidFire, POWER_UP_DURATION));
+                    }
+                }
+            }
+            !caught
+        })
+        .collect();
+
+    // ── 11. Update player & status ────────────────────────────────────────────
+    let hit_lives = if player_hit {
         state.player.lives.saturating_sub(1)
     } else {
         state.player.lives
     };
+    let new_lives = (hit_lives + extra_lives).min(MAX_LIVES);
 
     let status = if new_lives == 0 {
         GameStatus::GameOver
@@ -256,11 +363,17 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         ..state.player.clone()
     };
 
+    let new_score = state.score + score_gain;
+    let new_high_score = state.high_score.max(new_score);
+
     EntireGameStateInfo {
         player,
         enemies,
         bullets,
-        score: state.score + score_gain,
+        bonus_items,
+        active_power_up: new_power_up,
+        score: new_score,
+        high_score: new_high_score,
         status,
         frame,
         ..state.clone()
