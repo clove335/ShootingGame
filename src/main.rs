@@ -1,5 +1,6 @@
 mod display;
 
+use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -22,6 +23,30 @@ use shooting_game::compute::{init_state, move_player_left, move_player_right, pl
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
 
 const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
+
+// ── Simultaneous-input constants ──────────────────────────────────────────────
+
+/// Min frames between player movements while a direction key is held.
+/// 3 frames @ 30 FPS ≈ 10 moves/sec (≈ normal OS key-repeat feel).
+const MOVE_COOLDOWN: u32 = 3;
+
+/// Min frames between shots while Space is held.
+/// 8 frames @ 30 FPS ≈ 3.75 shots/sec (keeps the 3-bullet cap meaningful).
+const SHOOT_COOLDOWN: u32 = 8;
+
+/// A key is considered "held" if its last press/repeat event arrived within
+/// this many frames.  Covers terminals that don't emit key-release events:
+/// the OS key-repeat rate is ≥ 15 Hz, so a window of 4 frames (≈133 ms) is
+/// always refreshed before expiry.
+const HOLD_WINDOW: u64 = 4;
+
+/// Returns true if `key` was seen within the last `HOLD_WINDOW` frames.
+fn is_held(key_frame: &HashMap<KeyCode, u64>, key: &KeyCode, frame: u64) -> bool {
+    key_frame
+        .get(key)
+        .map(|&last| frame.saturating_sub(last) <= HOLD_WINDOW)
+        .unwrap_or(false)
+}
 
 // ── High-score persistence ────────────────────────────────────────────────────
 
@@ -144,6 +169,20 @@ fn show_menu<W: Write>(
 // ── Game loop ─────────────────────────────────────────────────────────────────
 
 /// Returns `true` → quit program,  `false` → back to menu.
+///
+/// Input model: instead of acting on each key event individually, we maintain
+/// a `key_frame` map that records the frame number of the last press/repeat
+/// event for every key.  Each frame we check which keys are still "fresh"
+/// (within `HOLD_WINDOW` frames) and apply all their effects simultaneously.
+/// This allows Space + A/D to be held at the same time with no interference.
+///
+/// Works on two classes of terminal:
+/// * **Keyboard-enhancement capable** (Ghostty, kitty, etc.): proper
+///   `Press` / `Repeat` / `Release` events → keys are removed on release.
+/// * **Classic terminals**: only `Press` events (OS key-repeat shows as
+///   repeated `Press`).  Keys expire naturally after `HOLD_WINDOW` frames of
+///   silence, which is shorter than the OS repeat interval, so the key stays
+///   live while it is actively generating repeats.
 fn game_loop<W: Write>(
     out: &mut W,
     state: &mut EntireGameStateInfo,
@@ -151,42 +190,83 @@ fn game_loop<W: Write>(
 ) -> std::io::Result<bool> {
     let mut rng = thread_rng();
 
+    // Maps each held key → the frame it was last seen (press or repeat).
+    let mut key_frame: HashMap<KeyCode, u64> = HashMap::new();
+    let mut move_cooldown: u32 = 0;
+    let mut shoot_cooldown: u32 = 0;
+    let mut frame: u64 = 0;
+
     loop {
         let frame_start = Instant::now();
+        frame += 1;
 
         // ── Drain all pending input events (non-blocking) ─────────────────────
         while let Ok(Event::Key(KeyEvent { code, kind, modifiers, .. })) = rx.try_recv() {
-            if !matches!(kind, KeyEventKind::Press | KeyEventKind::Repeat) {
-                continue;
-            }
-            match code {
-                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
-                    if state.status == GameStatus::Playing =>
-                {
-                    *state = move_player_left(state);
+            match kind {
+                // Press: record key + handle one-shot actions
+                KeyEventKind::Press => {
+                    key_frame.insert(code.clone(), frame);
+                    match code {
+                        KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
+                            return Ok(true);
+                        }
+                        KeyCode::Char('c')
+                            if modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
+                            return Ok(true);
+                        }
+                        KeyCode::Char('r') | KeyCode::Char('R')
+                            if state.status == GameStatus::GameOver =>
+                        {
+                            return Ok(false);
+                        }
+                        _ => {}
+                    }
                 }
-                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
-                    if state.status == GameStatus::Playing =>
-                {
-                    *state = move_player_right(state);
+                // Repeat: refresh timestamp so key stays "held"
+                KeyEventKind::Repeat => {
+                    key_frame.insert(code.clone(), frame);
                 }
-                KeyCode::Char(' ') if state.status == GameStatus::Playing => {
-                    *state = player_shoot(state);
+                // Release: remove key immediately (keyboard-enhancement path)
+                KeyEventKind::Release => {
+                    key_frame.remove(&code);
                 }
-                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
-                    return Ok(true);
-                }
-                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    return Ok(true);
-                }
-                KeyCode::Char('r') | KeyCode::Char('R')
-                    if state.status == GameStatus::GameOver =>
-                {
-                    return Ok(false);
-                }
-                _ => {}
             }
         }
+
+        // ── Apply held-key actions every frame ────────────────────────────────
+        if state.status == GameStatus::Playing {
+            // Compute which directional / shoot keys are currently live
+            let left = is_held(&key_frame, &KeyCode::Left, frame)
+                || is_held(&key_frame, &KeyCode::Char('a'), frame)
+                || is_held(&key_frame, &KeyCode::Char('A'), frame);
+            let right = is_held(&key_frame, &KeyCode::Right, frame)
+                || is_held(&key_frame, &KeyCode::Char('d'), frame)
+                || is_held(&key_frame, &KeyCode::Char('D'), frame);
+            let shoot = is_held(&key_frame, &KeyCode::Char(' '), frame);
+
+            // Movement — throttled so the player doesn't teleport
+            if move_cooldown == 0 {
+                if left {
+                    *state = move_player_left(state);
+                    move_cooldown = MOVE_COOLDOWN;
+                } else if right {
+                    *state = move_player_right(state);
+                    move_cooldown = MOVE_COOLDOWN;
+                }
+            }
+
+            // Shooting — throttled so holding Space doesn't drain all 3
+            // bullet slots in a single frame
+            if shoot_cooldown == 0 && shoot {
+                *state = player_shoot(state);
+                shoot_cooldown = SHOOT_COOLDOWN;
+            }
+        }
+
+        // Decrement cooldown timers
+        move_cooldown = move_cooldown.saturating_sub(1);
+        shoot_cooldown = shoot_cooldown.saturating_sub(1);
 
         if state.status == GameStatus::Playing {
             *state = tick(state, &mut rng);
