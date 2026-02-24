@@ -9,7 +9,10 @@ fn make_state() -> EntireGameStateInfo {
         player: Player { x: 20, y: 16, lives: 3 },
         enemies: Vec::new(),
         bullets: Vec::new(),
+        bonus_items: Vec::new(),
+        active_power_up: None,
         score: 0,
+        high_score: 0,
         level: Level::Easy,
         status: GameStatus::Playing,
         frame: 0,
@@ -26,7 +29,7 @@ fn seeded_rng() -> StdRng {
 
 #[test]
 fn init_state_player_position() {
-    let s = init_state(Level::Easy, 40, 20);
+    let s = init_state(Level::Easy, 40, 20, 0);
     assert_eq!(s.player.x, 20); // width / 2
     assert_eq!(s.player.y, 16); // height - 4
     assert_eq!(s.player.lives, 3);
@@ -34,7 +37,7 @@ fn init_state_player_position() {
 
 #[test]
 fn init_state_empty_collections() {
-    let s = init_state(Level::Easy, 40, 20);
+    let s = init_state(Level::Easy, 40, 20, 0);
     assert!(s.enemies.is_empty());
     assert!(s.bullets.is_empty());
     assert_eq!(s.score, 0);
@@ -44,7 +47,7 @@ fn init_state_empty_collections() {
 
 #[test]
 fn init_state_preserves_level_and_dims() {
-    let s = init_state(Level::Hard, 80, 24);
+    let s = init_state(Level::Hard, 80, 24, 0);
     assert_eq!(s.level, Level::Hard);
     assert_eq!(s.width, 80);
     assert_eq!(s.height, 24);
