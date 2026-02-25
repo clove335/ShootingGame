@@ -1,8 +1,4 @@
 /// Rendering layer — all terminal I/O lives here.
-///
-/// Each function receives a mutable writer and an immutable view of the
-/// game state.  No game logic is performed; this module only translates
-/// state into terminal commands.
 
 use std::io::Write;
 
@@ -14,7 +10,7 @@ use crossterm::{
 };
 use shooting_game::entities::{
     BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo,
-    GameStatus, Level,
+    Explosion, FlameBullet, FirebombProj, GameStatus, Level,
 };
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -27,15 +23,19 @@ const C_ENEMY_SPACECRAFT: Color = Color::Green;
 const C_ENEMY_OCTOPUS: Color = Color::Red;
 const C_BULLET_PLAYER: Color = Color::Cyan;
 const C_BULLET_ENEMY: Color = Color::Magenta;
-const C_HINT: Color = Color::DarkGrey;
 const C_BONUS_SPREAD: Color = Color::Yellow;
 const C_BONUS_LIFE: Color = Color::Magenta;
 const C_BONUS_RAPID: Color = Color::Cyan;
+const C_BONUS_FLAME: Color = Color::Rgb { r: 255, g: 128, b: 0 };  // orange
+const C_BONUS_BOMB: Color = Color::DarkRed;
+const C_FLAME_BULLET: Color = Color::Rgb { r: 255, g: 128, b: 0 }; // orange
+const C_FIREBOMB: Color = Color::Red;
+const C_EXPLOSION: Color = Color::Rgb { r: 255, g: 200, b: 0 };    // bright orange-yellow
 const C_POWERUP_ACTIVE: Color = Color::Yellow;
+const C_HINT: Color = Color::DarkGrey;
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-/// Render one complete frame.
 pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     out.queue(terminal::Clear(terminal::ClearType::All))?;
 
@@ -48,6 +48,15 @@ pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Re
     for bonus in &state.bonus_items {
         draw_bonus_item(out, bonus)?;
     }
+    for exp in &state.explosions {
+        draw_explosion(out, exp)?;
+    }
+    for fb in &state.flame_bullets {
+        draw_flame_bullet(out, fb)?;
+    }
+    for bomb in &state.firebombs {
+        draw_firebomb(out, bomb)?;
+    }
     for bullet in &state.bullets {
         draw_bullet(out, bullet)?;
     }
@@ -59,7 +68,6 @@ pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Re
         draw_game_over(out, state)?;
     }
 
-    // Park cursor in a harmless spot and flush
     out.queue(style::ResetColor)?;
     out.queue(cursor::MoveTo(0, state.height.saturating_sub(1)))?;
     out.flush()?;
@@ -71,39 +79,28 @@ pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Re
 fn draw_border<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     let w = state.width as usize;
     let h = state.height;
-
     out.queue(style::SetForegroundColor(C_BORDER))?;
-
-    // Row 1 — top bar
     out.queue(cursor::MoveTo(0, 1))?;
     out.queue(Print(format!("┌{}┐", "─".repeat(w.saturating_sub(2)))))?;
-
-    // Row h-2 — bottom bar
     out.queue(cursor::MoveTo(0, h.saturating_sub(2)))?;
     out.queue(Print(format!("└{}┘", "─".repeat(w.saturating_sub(2)))))?;
-
-    // Side walls
     for row in 2..h.saturating_sub(2) {
         out.queue(cursor::MoveTo(0, row))?;
         out.queue(Print("│"))?;
         out.queue(cursor::MoveTo(state.width.saturating_sub(1), row))?;
         out.queue(Print("│"))?;
     }
-
     Ok(())
 }
 
-// ── HUD (row 0) ───────────────────────────────────────────────────────────────
+// ── HUD ───────────────────────────────────────────────────────────────────────
 
 fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
-    // Score and high score — left
+    // Score + high score — left
     out.queue(cursor::MoveTo(1, 0))?;
     out.queue(style::SetForegroundColor(C_HUD_SCORE))?;
     if state.high_score > 0 {
-        out.queue(Print(format!(
-            "Score:{:>6}  Hi:{:>6}",
-            state.score, state.high_score
-        )))?;
+        out.queue(Print(format!("Score:{:>6}  Hi:{:>6}", state.score, state.high_score)))?;
     } else {
         out.queue(Print(format!("Score:{:>6}", state.score)))?;
     }
@@ -124,27 +121,19 @@ fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Resu
     out.queue(style::SetForegroundColor(level_color))?;
     out.queue(Print(level_str))?;
 
-    // Active power-up indicator + lives — right side
-    // Build the right-side string, right-aligned
+    // Active power-up indicator + lives — right
     let power_tag = match &state.active_power_up {
-        Some((BonusKind::SpreadShot, frames)) => {
-            format!("[★ SPREAD {:>2}s] ", frames / 30 + 1)
-        }
-        Some((BonusKind::RapidFire, frames)) => {
-            format!("[! RAPID  {:>2}s] ", frames / 30 + 1)
-        }
+        Some((BonusKind::SpreadShot, f)) => format!("[★ SPREAD {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::RapidFire,  f)) => format!("[! RAPID  {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::FlameBurst, f)) => format!("[~ FLAME  {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::Firebomb,   f)) => format!("[o BOMB   {:>2}s] ", f / 30 + 1),
         _ => String::new(),
     };
-    let hearts: String = "♥".repeat(state.player.lives as usize);
+    let hearts = "♥".repeat(state.player.lives as usize);
     let lives_str = format!("Lives:{}", hearts);
     let right_str = format!("{}{}", power_tag, lives_str);
-
-    let rx = state
-        .width
-        .saturating_sub(right_str.chars().count() as u16 + 1);
+    let rx = state.width.saturating_sub(right_str.chars().count() as u16 + 1);
     out.queue(cursor::MoveTo(rx, 0))?;
-
-    // Colour the power-up tag separately if present
     if !power_tag.is_empty() {
         out.queue(style::SetForegroundColor(C_POWERUP_ACTIVE))?;
         out.queue(Print(&power_tag))?;
@@ -158,37 +147,26 @@ fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Resu
 // ── Entities ──────────────────────────────────────────────────────────────────
 
 fn draw_player<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
-    // Enhanced sprite (2 rows, 3 cols):
-    //   ▲       ← row y      (tip)
-    //  /█\      ← row y+1    (fuselage + wings)
     let p = &state.player;
     out.queue(style::SetForegroundColor(C_PLAYER))?;
-
-    // Tip
     out.queue(cursor::MoveTo(p.x as u16, p.y as u16))?;
     out.queue(Print("▲"))?;
-
-    // Fuselage — starting one column left of centre
     let wing_y = p.y + 1;
     if wing_y < state.height as i32 - 2 {
         out.queue(cursor::MoveTo((p.x - 1).max(1) as u16, wing_y as u16))?;
         out.queue(Print("/█\\"))?;
     }
-
     Ok(())
 }
 
 fn draw_enemy<W: Write>(
     out: &mut W,
     enemy: &Enemy,
-    play_bottom: i32, // bottom border row (= height - 2)
+    play_bottom: i32,
 ) -> std::io::Result<()> {
     let lx = (enemy.x - 1).max(0) as u16;
     match enemy.kind {
         EnemyKind::Spacecraft => {
-            // Enhanced sprite:
-            //   «▼»    ← swept-back wings
-            //   ╚═╝    ← engine block
             out.queue(style::SetForegroundColor(C_ENEMY_SPACECRAFT))?;
             out.queue(cursor::MoveTo(lx, enemy.y as u16))?;
             out.queue(Print("«▼»"))?;
@@ -198,9 +176,6 @@ fn draw_enemy<W: Write>(
             }
         }
         EnemyKind::Octopus => {
-            // Enhanced sprite:
-            //   (◎)    ← glowing eye
-            //   ╰─╯    ← tentacle arc
             out.queue(style::SetForegroundColor(C_ENEMY_OCTOPUS))?;
             out.queue(cursor::MoveTo(lx, enemy.y as u16))?;
             out.queue(Print("(◎)"))?;
@@ -213,18 +188,14 @@ fn draw_enemy<W: Write>(
     Ok(())
 }
 
-fn draw_bullet<W: Write>(
-    out: &mut W,
-    bullet: &Bullet,
-) -> std::io::Result<()> {
+fn draw_bullet<W: Write>(out: &mut W, bullet: &Bullet) -> std::io::Result<()> {
+    out.queue(cursor::MoveTo(bullet.x as u16, bullet.y as u16))?;
     match bullet.owner {
         BulletOwner::Player => {
-            out.queue(cursor::MoveTo(bullet.x as u16, bullet.y as u16))?;
             out.queue(style::SetForegroundColor(C_BULLET_PLAYER))?;
             out.queue(Print("║"))?;
         }
         BulletOwner::Enemy => {
-            out.queue(cursor::MoveTo(bullet.x as u16, bullet.y as u16))?;
             out.queue(style::SetForegroundColor(C_BULLET_ENEMY))?;
             out.queue(Print("↓"))?;
         }
@@ -232,12 +203,76 @@ fn draw_bullet<W: Write>(
     Ok(())
 }
 
+/// Draw one flame bullet. The displayed character hints at its angle:
+///
+/// ```text
+///  vx ≤ −0.7  →  ╱   (steep left)
+///  vx ≤ −0.1  →  /   (gentle left)
+///  |vx| < 0.1 →  ~   (near-vertical)
+///  vx ≥  0.1  →  \   (gentle right)
+///  vx ≥  0.7  →  ╲   (steep right)
+/// ```
+fn draw_flame_bullet<W: Write>(out: &mut W, fb: &FlameBullet) -> std::io::Result<()> {
+    let x = fb.x.round() as u16;
+    let y = fb.y.round() as u16;
+    out.queue(cursor::MoveTo(x, y))?;
+    out.queue(style::SetForegroundColor(C_FLAME_BULLET))?;
+    let ch = if fb.vx <= -0.7 {
+        "╱"
+    } else if fb.vx <= -0.1 {
+        "/"
+    } else if fb.vx < 0.1 {
+        "~"
+    } else if fb.vx < 0.7 {
+        "\\"
+    } else {
+        "╲"
+    };
+    out.queue(Print(ch))?;
+    Ok(())
+}
+
+/// Draw a firebomb in transit as a pulsing red circle.
+fn draw_firebomb<W: Write>(out: &mut W, bomb: &FirebombProj) -> std::io::Result<()> {
+    out.queue(cursor::MoveTo(bomb.x as u16, bomb.y as u16))?;
+    // Alternate between ● and ○ based on fuse parity for a pulsing effect.
+    let ch = if bomb.fuse % 6 < 3 { "●" } else { "○" };
+    out.queue(style::SetForegroundColor(C_FIREBOMB))?;
+    out.queue(Print(ch))?;
+    Ok(())
+}
+
+/// Draw a firebomb explosion — a bright diamond of `*` characters.
+///
+/// Display radius 3 (Euclidean), slightly smaller than the kill radius (4)
+/// so players can see enemies die "just outside" the visible blast.
+fn draw_explosion<W: Write>(out: &mut W, exp: &Explosion) -> std::io::Result<()> {
+    const R: i32 = 3;
+    out.queue(style::SetForegroundColor(C_EXPLOSION))?;
+    for dy in -R..=R {
+        for dx in -R..=R {
+            if dx * dx + dy * dy <= R * R {
+                let px = exp.x + dx;
+                let py = exp.y + dy;
+                if px > 0 && py > 1 {
+                    out.queue(cursor::MoveTo(px as u16, py as u16))?;
+                    out.queue(Print("*"))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Draw a falling bonus item.
 ///
-/// Symbols:
-///   ★  (yellow)  — SpreadShot: collect for 3-way spread fire
-///   ♥  (magenta) — ExtraLife:  instantly restores one life
-///   !  (cyan)    — RapidFire:  raises the bullet cap to 6
+/// | Symbol | Colour  | Power-up                                        |
+/// |--------|---------|--------------------------------------------------|
+/// | `★`    | Yellow  | SpreadShot — 3-way spread fire                  |
+/// | `♥`    | Magenta | ExtraLife — restores one life                   |
+/// | `!`    | Cyan    | RapidFire — 6-bullet cap                        |
+/// | `~`    | Orange  | FlameBurst — 4-way 36° angled flame shots       |
+/// | `o`    | DarkRed | Firebomb — slow explosive with area damage       |
 fn draw_bonus_item<W: Write>(out: &mut W, bonus: &BonusItem) -> std::io::Result<()> {
     out.queue(cursor::MoveTo(bonus.x as u16, bonus.y as u16))?;
     match bonus.kind {
@@ -253,11 +288,19 @@ fn draw_bonus_item<W: Write>(out: &mut W, bonus: &BonusItem) -> std::io::Result<
             out.queue(style::SetForegroundColor(C_BONUS_RAPID))?;
             out.queue(Print("!"))?;
         }
+        BonusKind::FlameBurst => {
+            out.queue(style::SetForegroundColor(C_BONUS_FLAME))?;
+            out.queue(Print("~"))?;
+        }
+        BonusKind::Firebomb => {
+            out.queue(style::SetForegroundColor(C_BONUS_BOMB))?;
+            out.queue(Print("o"))?;
+        }
     }
     Ok(())
 }
 
-// ── Controls hint (last row) ──────────────────────────────────────────────────
+// ── Controls hint ─────────────────────────────────────────────────────────────
 
 fn draw_controls_hint<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     out.queue(cursor::MoveTo(1, state.height.saturating_sub(1)))?;
@@ -271,54 +314,42 @@ fn draw_controls_hint<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
 fn draw_game_over<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     let score_line = format!("Final Score: {:>6}", state.score);
     let best_score = state.high_score.max(state.score);
-    let best_line = if state.score >= state.high_score && state.score > 0 {
+    let is_new_best = state.score > 0 && state.score >= state.high_score;
+    let best_line = if is_new_best {
         format!("★ NEW BEST: {:>6} ★", best_score)
     } else {
         format!("Best Score:  {:>6}", best_score)
     };
 
+    let cx = state.width / 2;
     let lines: &[(&str, Color)] = &[
         ("╔════════════════════╗", Color::Red),
         ("║    GAME  OVER      ║", Color::Red),
         ("╚════════════════════╝", Color::Red),
     ];
-    let score_color = Color::Yellow;
-    let best_color = if state.score >= state.high_score && state.score > 0 {
-        Color::Yellow
-    } else {
-        Color::DarkGrey
-    };
-    let hint_color = Color::White;
-
-    let cx = state.width / 2;
-    let total_rows = lines.len() + 3; // 3 box lines + score + best + hint
-    let start_row = (state.height / 2).saturating_sub(total_rows as u16 / 2);
+    let start_row = (state.height / 2).saturating_sub((lines.len() + 3) as u16 / 2);
 
     for (i, (msg, color)) in lines.iter().enumerate() {
-        let row = start_row + i as u16;
         let col = cx.saturating_sub(msg.chars().count() as u16 / 2);
-        out.queue(cursor::MoveTo(col, row))?;
+        out.queue(cursor::MoveTo(col, start_row + i as u16))?;
         out.queue(style::SetForegroundColor(*color))?;
         out.queue(Print(*msg))?;
     }
 
     let score_row = start_row + lines.len() as u16;
-    let col = cx.saturating_sub(score_line.chars().count() as u16 / 2);
-    out.queue(cursor::MoveTo(col, score_row))?;
-    out.queue(style::SetForegroundColor(score_color))?;
+    out.queue(cursor::MoveTo(cx.saturating_sub(score_line.len() as u16 / 2), score_row))?;
+    out.queue(style::SetForegroundColor(Color::Yellow))?;
     out.queue(Print(&score_line))?;
 
     let best_row = score_row + 1;
-    let col = cx.saturating_sub(best_line.chars().count() as u16 / 2);
-    out.queue(cursor::MoveTo(col, best_row))?;
+    let best_color = if is_new_best { Color::Yellow } else { Color::DarkGrey };
+    out.queue(cursor::MoveTo(cx.saturating_sub(best_line.chars().count() as u16 / 2), best_row))?;
     out.queue(style::SetForegroundColor(best_color))?;
     out.queue(Print(&best_line))?;
 
     let hint = "R - Play Again  Q - Quit";
-    let hint_row = best_row + 1;
-    let col = cx.saturating_sub(hint.chars().count() as u16 / 2);
-    out.queue(cursor::MoveTo(col, hint_row))?;
-    out.queue(style::SetForegroundColor(hint_color))?;
+    out.queue(cursor::MoveTo(cx.saturating_sub(hint.len() as u16 / 2), best_row + 1))?;
+    out.queue(style::SetForegroundColor(Color::White))?;
     out.queue(Print(hint))?;
 
     Ok(())

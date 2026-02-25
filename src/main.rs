@@ -144,9 +144,11 @@ fn show_menu<W: Write>(
     out.queue(Print("Power-ups (catch falling items):"))?;
 
     let bonus_info: &[(&str, Color, &str)] = &[
-        ("★", Color::Yellow,  " SpreadShot — 3-way fire"),
-        ("♥", Color::Magenta, " ExtraLife  — +1 life"),
-        ("!", Color::Cyan,    " RapidFire  — 6 bullets on screen"),
+        ("★", Color::Yellow,              " SpreadShot — 3-way fire"),
+        ("♥", Color::Magenta,             " ExtraLife  — +1 life"),
+        ("!", Color::Cyan,                " RapidFire  — 6 bullets on screen"),
+        ("~", Color::Rgb { r: 255, g: 128, b: 0 },   " FlameBurst — 4-way 36° flame spread"),
+        ("o", Color::DarkRed,             " Firebomb   — slow bomb, area explosion"),
     ];
     for (i, (sym, color, desc)) in bonus_info.iter().enumerate() {
         let row = cy + 4 + i as u16;
@@ -157,7 +159,7 @@ fn show_menu<W: Write>(
         out.queue(Print(*desc))?;
     }
 
-    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 8))?;
+    out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 10))?;
     out.queue(style::SetForegroundColor(Color::DarkGrey))?;
     out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
 
