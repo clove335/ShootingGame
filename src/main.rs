@@ -35,10 +35,24 @@ const MOVE_COOLDOWN: u32 = 3;
 const SHOOT_COOLDOWN: u32 = 8;
 
 /// A key is considered "held" if its last press/repeat event arrived within
-/// this many frames.  Covers terminals that don't emit key-release events:
-/// the OS key-repeat rate is ≥ 15 Hz, so a window of 4 frames (≈133 ms) is
-/// always refreshed before expiry.
-const HOLD_WINDOW: u64 = 4;
+/// this many frames.
+///
+/// # Why 20?
+///
+/// The OS sends an initial burst of zero repeats after a key is first pressed,
+/// then starts repeating at ~15–30 Hz only after its initial delay (typically
+/// 250–500 ms).  At 30 FPS that is 7–15 frames of silence.  HOLD_WINDOW must
+/// be ≥ that silence to bridge the gap:
+///
+///   Press → [silence ~10 frames] → repeat @ 2-frame intervals → ...
+///                 ↑ old window of 4 expired here
+///              ↑ new window of 20 covers this safely
+///
+/// On terminals with keyboard-enhancement support the `Release` event removes
+/// the key from the map immediately, so HOLD_WINDOW never causes sticky input.
+/// On classic terminals (no Release events) the maximum lag after releasing a
+/// key is 20 frames (~667 ms) — an acceptable trade-off.
+const HOLD_WINDOW: u64 = 20;
 
 /// Returns true if `key` was seen within the last `HOLD_WINDOW` frames.
 fn is_held(key_frame: &HashMap<KeyCode, u64>, key: &KeyCode, frame: u64) -> bool {
