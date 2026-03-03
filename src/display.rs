@@ -36,14 +36,56 @@ const C_HINT: Color = Color::DarkGrey;
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
-    out.queue(terminal::Clear(terminal::ClearType::All))?;
+/// ## Why `full_redraw`?
+///
+/// `terminal::Clear(All)` repaints the entire terminal viewport every frame,
+/// causing visible flicker and forcing the GPU to process every cell — even
+/// the border and controls hint that never change.
+///
+/// On the **first frame** (`full_redraw = true`) we still do a full clear so
+/// the screen starts clean, then draw the border and controls hint.
+///
+/// On every **subsequent frame** (`full_redraw = false`) we only erase:
+/// - Row 0 (HUD) — score, timer, and lives change every frame.
+/// - Rows 2 → h−3 (play area) — where all moving entities live.
+///
+/// The border (rows 1, h−2) and controls hint (row h−1) are **left in place**:
+/// game entities are clamped inside the play area so they can never overwrite
+/// those rows.  This cuts the terminal's per-frame work from O(viewport) to
+/// O(play area), eliminating flicker on static regions entirely.
+pub fn render<W: Write>(
+    out: &mut W,
+    state: &EntireGameStateInfo,
+    full_redraw: bool,
+) -> std::io::Result<()> {
+    let w = state.width;
+    let h = state.height;
 
-    draw_border(out, state)?;
+    if full_redraw {
+        // First frame: clear everything and paint the static chrome.
+        out.queue(terminal::Clear(terminal::ClearType::All))?;
+        draw_border(out, state)?;
+        draw_controls_hint(out, state)?;
+    } else {
+        // Subsequent frames: erase only the two dynamic regions.
+
+        // Row 0 — HUD (score, power-up countdown, lives all change each frame)
+        out.queue(cursor::MoveTo(0, 0))?;
+        out.queue(Print(" ".repeat(w as usize)))?;
+
+        // Rows 2 … h-3 — play area (cols 1 … w-2, inside the border walls)
+        let blank = " ".repeat(w.saturating_sub(2) as usize);
+        for row in 2u16..h.saturating_sub(2) {
+            out.queue(cursor::MoveTo(1, row))?;
+            out.queue(Print(&blank))?;
+        }
+    }
+
+    // Always repaint dynamic content.
     draw_hud(out, state)?;
 
     for enemy in &state.enemies {
-        draw_enemy(out, enemy, state.height as i32 - 2)?;
+        draw_enemy(out, enemy, h as i32 - 2)?;
     }
     for bonus in &state.bonus_items {
         draw_bonus_item(out, bonus)?;
@@ -60,16 +102,14 @@ pub fn render<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Re
     for bullet in &state.bullets {
         draw_bullet(out, bullet)?;
     }
-
     draw_player(out, state)?;
-    draw_controls_hint(out, state)?;
 
     if state.status == GameStatus::GameOver {
         draw_game_over(out, state)?;
     }
 
     out.queue(style::ResetColor)?;
-    out.queue(cursor::MoveTo(0, state.height.saturating_sub(1)))?;
+    out.queue(cursor::MoveTo(0, h.saturating_sub(1)))?;
     out.flush()?;
     Ok(())
 }

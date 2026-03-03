@@ -211,6 +211,7 @@ fn game_loop<W: Write>(
     let mut move_cooldown: u32 = 0;
     let mut shoot_cooldown: u32 = 0;
     let mut frame: u64 = 0;
+    let mut first_frame = true;
 
     loop {
         let frame_start = Instant::now();
@@ -288,7 +289,8 @@ fn game_loop<W: Write>(
             *state = tick(state, &mut rng);
         }
 
-        display::render(out, state)?;
+        display::render(out, state, first_frame)?;
+        first_frame = false;
 
         let elapsed = frame_start.elapsed();
         if elapsed < FRAME {
