@@ -1,20 +1,19 @@
-/// Rendering layer — all terminal I/O lives here.
-///
-/// Each function receives a mutable writer and an immutable view of the
-/// game state.  No game logic is performed; this module only translates
-/// state into terminal commands.
+//! Rendering layer — all terminal I/O lives here.
+//!
+//! Each function receives a mutable writer and an immutable view of the
+//! game state.  No game logic is performed; this module only translates
+//! state into terminal commands.
 
 use std::io::Write;
 
 use crossterm::{
     cursor,
     style::{self, Color, Print},
-    terminal,
-    QueueableCommand,
+    terminal, QueueableCommand,
 };
 use shooting_game::entities::{
-    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo,
-    GameStatus, Level,
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
+    Level,
 };
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -252,10 +251,7 @@ fn draw_enemy<W: Write>(
     Ok(())
 }
 
-fn draw_bullet<W: Write>(
-    out: &mut W,
-    bullet: &Bullet,
-) -> std::io::Result<()> {
+fn draw_bullet<W: Write>(out: &mut W, bullet: &Bullet) -> std::io::Result<()> {
     match bullet.owner {
         BulletOwner::Player => {
             out.queue(cursor::MoveTo(bullet.x as u16, bullet.y as u16))?;

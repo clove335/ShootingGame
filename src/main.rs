@@ -10,12 +10,11 @@ use std::time::{Duration, Instant};
 use crossterm::{
     cursor,
     event::{
-        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     style::{self, Color, Print},
-    terminal,
-    ExecutableCommand, QueueableCommand,
+    terminal, ExecutableCommand, QueueableCommand,
 };
 use rand::thread_rng;
 
@@ -122,9 +121,9 @@ fn show_menu<W: Write>(
     out.queue(Print("Select difficulty:"))?;
 
     let options: &[(&str, &str, Color, &str)] = &[
-        ("1", "Easy  ", Color::Green,  "Slow enemies, relaxed pace"),
+        ("1", "Easy  ", Color::Green, "Slow enemies, relaxed pace"),
         ("2", "Medium", Color::Yellow, "Balanced challenge"),
-        ("3", "Hard  ", Color::Red,    "Fast and relentless!"),
+        ("3", "Hard  ", Color::Red, "Fast and relentless!"),
     ];
 
     for (i, (key, label, color, desc)) in options.iter().enumerate() {
@@ -144,9 +143,9 @@ fn show_menu<W: Write>(
     out.queue(Print("Power-ups (catch falling items):"))?;
 
     let bonus_info: &[(&str, Color, &str)] = &[
-        ("★", Color::Yellow,  " SpreadShot — 3-way fire"),
+        ("★", Color::Yellow, " SpreadShot — 3-way fire"),
         ("♥", Color::Magenta, " ExtraLife  — +1 life"),
-        ("!", Color::Cyan,    " RapidFire  — 6 bullets on screen"),
+        ("!", Color::Cyan, " RapidFire  — 6 bullets on screen"),
     ];
     for (i, (sym, color, desc)) in bonus_info.iter().enumerate() {
         let row = cy + 4 + i as u16;
@@ -216,18 +215,22 @@ fn game_loop<W: Write>(
         frame += 1;
 
         // ── Drain all pending input events (non-blocking) ─────────────────────
-        while let Ok(Event::Key(KeyEvent { code, kind, modifiers, .. })) = rx.try_recv() {
+        while let Ok(Event::Key(KeyEvent {
+            code,
+            kind,
+            modifiers,
+            ..
+        })) = rx.try_recv()
+        {
             match kind {
                 // Press: record key + handle one-shot actions
                 KeyEventKind::Press => {
-                    key_frame.insert(code.clone(), frame);
+                    key_frame.insert(code, frame);
                     match code {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             return Ok(true);
                         }
-                        KeyCode::Char('c')
-                            if modifiers.contains(KeyModifiers::CONTROL) =>
-                        {
+                        KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
                             return Ok(true);
                         }
                         KeyCode::Char('r') | KeyCode::Char('R')
@@ -240,7 +243,7 @@ fn game_loop<W: Write>(
                 }
                 // Repeat: refresh timestamp so key stays "held"
                 KeyEventKind::Repeat => {
-                    key_frame.insert(code.clone(), frame);
+                    key_frame.insert(code, frame);
                 }
                 // Release: remove key immediately (keyboard-enhancement path)
                 KeyEventKind::Release => {
@@ -319,14 +322,9 @@ fn main() -> std::io::Result<()> {
     // through a channel so the game loop never has to block on I/O.
     let (tx, rx) = mpsc::channel::<Event>();
     thread::spawn(move || {
-        loop {
-            match event::read() {
-                Ok(ev) => {
-                    if tx.send(ev).is_err() {
-                        break; // receiver dropped → program exiting
-                    }
-                }
-                Err(_) => break,
+        while let Ok(ev) = event::read() {
+            if tx.send(ev).is_err() {
+                break; // receiver dropped → program exiting
             }
         }
     });
@@ -344,10 +342,7 @@ fn main() -> std::io::Result<()> {
     result
 }
 
-fn run<W: Write>(
-    out: &mut W,
-    rx: &mpsc::Receiver<Event>,
-) -> std::io::Result<()> {
+fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()> {
     let mut high_score = load_high_score();
 
     loop {
