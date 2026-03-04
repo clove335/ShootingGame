@@ -38,7 +38,7 @@ ex.)
     |_ calculate/ or compute/
     |   |-
     |---|-
--- test/
+-- tests/
 ```
 - Before add new features, make sure the below lists and add the features
     - Pull from remote repositories into main to make sure the local branches are updated
@@ -52,8 +52,7 @@ ex.)
 - Runner: `cargo test` — Rust built-in test runner
 - No external test crates or frameworks
     - use GitHub Actions for CI/CD
-- Test modules: `#[cfg(test)] mod tests` blocks inside each source file
-  (binary crate constraint — no lib.rs, no tests/ directory)
+- Test modules: create test codes under tests/ directory
 - Files covered:
     src/entities/mod.rs   — derive-trait contract tests
     src/compute/mod.rs    — all pure game-logic functions (primary surface)
