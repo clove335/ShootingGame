@@ -1,5 +1,3 @@
-mod display;
-
 use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
 use std::path::PathBuf;
@@ -19,6 +17,7 @@ use crossterm::{
 use rand::thread_rng;
 
 use shooting_game::compute::{init_state, move_player_left, move_player_right, player_shoot, tick};
+use shooting_game::display;
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
 
 const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
