@@ -1,14 +1,14 @@
-/// Pure game-logic functions.
-///
-/// Every public function takes an immutable reference to the current
-/// `EntireGameStateInfo` (and, where needed, an RNG handle) and returns a brand-new
-/// `EntireGameStateInfo`.  Side effects are limited to the injected RNG.
+//! Pure game-logic functions.
+//!
+//! Every public function takes an immutable reference to the current
+//! `EntireGameStateInfo` (and, where needed, an RNG handle) and returns a brand-new
+//! `EntireGameStateInfo`.  Side effects are limited to the injected RNG.
 
 use rand::Rng;
 
 use crate::entities::{
-    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo,
-    GameStatus, Level, Player,
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
+    Level, Player,
 };
 
 // ── Difficulty tables ────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
 /// - RapidFire power-up: 1 bullet, cap raised to 6.
 pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let is_spread = matches!(&state.active_power_up, Some((BonusKind::SpreadShot, _)));
-    let is_rapid  = matches!(&state.active_power_up, Some((BonusKind::RapidFire,  _)));
+    let is_rapid = matches!(&state.active_power_up, Some((BonusKind::RapidFire, _)));
     let cap = if is_rapid { 6 } else { 3 };
 
     let active = state
@@ -121,7 +121,12 @@ pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
         // Three bullets: left, center, right — skip any that would exceed the cap
         let offsets: [i32; 3] = [-2, 0, 2];
         for dx in offsets {
-            if bullets.iter().filter(|b| b.owner == BulletOwner::Player).count() >= cap {
+            if bullets
+                .iter()
+                .filter(|b| b.owner == BulletOwner::Player)
+                .count()
+                >= cap
+            {
                 break;
             }
             let bx = (state.player.x + dx).clamp(1, state.width as i32 - 2);
@@ -165,18 +170,24 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
             if new_y < 2 || new_y > state.height as i32 - 3 {
                 None
             } else {
-                Some(Bullet { y: new_y, ..b.clone() })
+                Some(Bullet {
+                    y: new_y,
+                    ..b.clone()
+                })
             }
         })
         .collect();
 
     // ── 2. Move enemies down on their interval ───────────────────────────────
     let move_interval = enemy_move_interval(&state.level);
-    let enemies: Vec<Enemy> = if frame % move_interval == 0 {
+    let enemies: Vec<Enemy> = if frame.is_multiple_of(move_interval) {
         state
             .enemies
             .iter()
-            .map(|e| Enemy { y: e.y + 1, ..e.clone() })
+            .map(|e| Enemy {
+                y: e.y + 1,
+                ..e.clone()
+            })
             .collect()
     } else {
         state.enemies.clone()
@@ -185,7 +196,7 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
     // ── 3. Spawn a new enemy ─────────────────────────────────────────────────
     let spawn_rate = enemy_spawn_rate(&state.level);
     let mut enemies = enemies;
-    if frame % spawn_rate == 0 {
+    if frame.is_multiple_of(spawn_rate) {
         let x = rng.gen_range(1..(state.width as i32 - 1));
         let kind = if rng.gen_bool(0.6) {
             EnemyKind::Spacecraft
@@ -280,14 +291,17 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         .collect();
 
     // ── 7. Move bonus items ───────────────────────────────────────────────────
-    let bonus_items: Vec<BonusItem> = if frame % BONUS_MOVE_INTERVAL == 0 {
+    let bonus_items: Vec<BonusItem> = if frame.is_multiple_of(BONUS_MOVE_INTERVAL) {
         state
             .bonus_items
             .iter()
             .filter_map(|b| {
                 let new_y = b.y + 1;
                 if new_y < state.height as i32 - 2 {
-                    Some(BonusItem { y: new_y, ..b.clone() })
+                    Some(BonusItem {
+                        y: new_y,
+                        ..b.clone()
+                    })
                 } else {
                     None // fell off the bottom without being caught
                 }
@@ -299,7 +313,7 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
 
     // ── 8. Spawn a new bonus item ─────────────────────────────────────────────
     let mut bonus_items = bonus_items;
-    if frame % BONUS_SPAWN_INTERVAL == 0 {
+    if frame.is_multiple_of(BONUS_SPAWN_INTERVAL) {
         let x = rng.gen_range(2..(state.width as i32 - 2));
         let kind = match rng.gen_range(0..3u32) {
             0 => BonusKind::SpreadShot,
