@@ -1,5 +1,5 @@
 ### Architecture
-- No strategy so far. If I think it up, I will Write it later
+- No strategy so far. If I think it up, for example OOP, DDD, TDD, or whatsoever, I will Write it later
 
 ### Specification
 - Environment: Terminal Emulator(Ghostty)
@@ -18,15 +18,20 @@
 -- Opponents come from up to down 
 - Display total points on Left Upper Screen
 
-
 ### Programming Instruction
 - Write programs in Rust in a Functional way(=as little as side effects for simpler maintainability), though Rust is a balanced System Programming Language that incorporates on Programming Language Designs like Immutability, Zero cost abstraction, and performance(=as fast as C language) 
 - Write it and create directories in units of some modules with the responsibility, like display, calculate, lib
 ex.) 
+```
 -- docs/
 -- lib/
 -- src/
     |- main.rs
+    |- display.rs
+    |- compute.rs
+    |
+... # if modules get bigger(ex.) over 10000 lines), create directories like below and divide big files into multiple files with some responsibilities
+    |
     |_ display/
     |   |-
     |   |-
@@ -34,14 +39,19 @@ ex.)
     |   |-
     |---|-
 -- test/
+```
+- Before add new features, make sure the below lists and add the features
+    - Pull from remote repositories into main to make sure the local branches are updated
+    - After you confirm that branches are latest, create branches with the unit of features
 
 ### Tests Strategy
 - Use cargo for library management, tests (needless to say...)
-- I am not sure, but you can create usual Unit tests for functions, considering P
+- I am not sure, but you can create usual Unit tests for functions, considering
 
 ### Tests Strategy (Implemented)
 - Runner: `cargo test` — Rust built-in test runner
 - No external test crates or frameworks
+    - use GitHub Actions for CI/CD
 - Test modules: `#[cfg(test)] mod tests` blocks inside each source file
   (binary crate constraint — no lib.rs, no tests/ directory)
 - Files covered:
@@ -67,5 +77,4 @@ ex.)
                             collision bounding box (3-wide × 2-tall), score, lives,
                             game-over trigger, u32 saturation
     6. HeldKey            — press/release/grace-period/key-repeat/edge cases
-
 
