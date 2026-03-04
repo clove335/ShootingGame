@@ -20,7 +20,11 @@ fn entity_clone_and_eq() {
 #[test]
 fn game_state_clone_is_independent() {
     let original = EntireGameStateInfo {
-        player: Player { x: 20, y: 16, lives: 3 },
+        player: Player {
+            x: 20,
+            y: 16,
+            lives: 3,
+        },
         enemies: Vec::new(),
         bullets: Vec::new(),
         bonus_items: Vec::new(),
@@ -38,7 +42,11 @@ fn game_state_clone_is_independent() {
     // Mutating the clone must not affect the original
     cloned.player.x = 99;
     cloned.score = 999;
-    cloned.enemies.push(Enemy { x: 5, y: 5, kind: EnemyKind::Spacecraft });
+    cloned.enemies.push(Enemy {
+        x: 5,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
 
     assert_eq!(original.player.x, 20);
     assert_eq!(original.score, 0);

@@ -6,7 +6,11 @@ use rand::SeedableRng;
 
 fn make_state() -> EntireGameStateInfo {
     EntireGameStateInfo {
-        player: Player { x: 20, y: 16, lives: 3 },
+        player: Player {
+            x: 20,
+            y: 16,
+            lives: 3,
+        },
         enemies: Vec::new(),
         bullets: Vec::new(),
         bonus_items: Vec::new(),
@@ -145,7 +149,11 @@ fn shoot_adds_bullet_at_player_position() {
 fn shoot_cap_at_three_player_bullets() {
     let mut s = make_state();
     for _ in 0..3 {
-        s.bullets.push(Bullet { x: 5, y: 5, owner: BulletOwner::Player });
+        s.bullets.push(Bullet {
+            x: 5,
+            y: 5,
+            owner: BulletOwner::Player,
+        });
     }
     let s2 = player_shoot(&s);
     assert_eq!(s2.bullets.len(), 3); // 4th shot blocked
@@ -156,14 +164,26 @@ fn shoot_respects_cap_with_mixed_bullets() {
     let mut s = make_state();
     // 2 player bullets + 5 enemy bullets — player cap still has room
     for _ in 0..2 {
-        s.bullets.push(Bullet { x: 5, y: 5, owner: BulletOwner::Player });
+        s.bullets.push(Bullet {
+            x: 5,
+            y: 5,
+            owner: BulletOwner::Player,
+        });
     }
     for _ in 0..5 {
-        s.bullets.push(Bullet { x: 3, y: 8, owner: BulletOwner::Enemy });
+        s.bullets.push(Bullet {
+            x: 3,
+            y: 8,
+            owner: BulletOwner::Enemy,
+        });
     }
     let s2 = player_shoot(&s);
     // Should now have 3 player + 5 enemy = 8 total
-    let player_count = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Player).count();
+    let player_count = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .count();
     assert_eq!(player_count, 3);
 }
 
@@ -171,10 +191,18 @@ fn shoot_respects_cap_with_mixed_bullets() {
 fn shoot_allows_third_bullet() {
     let mut s = make_state();
     for _ in 0..2 {
-        s.bullets.push(Bullet { x: 5, y: 5, owner: BulletOwner::Player });
+        s.bullets.push(Bullet {
+            x: 5,
+            y: 5,
+            owner: BulletOwner::Player,
+        });
     }
     let s2 = player_shoot(&s);
-    let player_count = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Player).count();
+    let player_count = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .count();
     assert_eq!(player_count, 3);
 }
 
@@ -198,10 +226,18 @@ fn tick_increments_frame() {
 #[test]
 fn tick_player_bullet_moves_up() {
     let mut s = make_state();
-    s.bullets.push(Bullet { x: 20, y: 10, owner: BulletOwner::Player });
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 10,
+        owner: BulletOwner::Player,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     // bullet at y=10 → y=9 (and not discarded since 9 >= 2)
-    let b: Vec<_> = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Player).collect();
+    let b: Vec<_> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .collect();
     assert_eq!(b.len(), 1);
     assert_eq!(b[0].y, 9);
 }
@@ -209,9 +245,17 @@ fn tick_player_bullet_moves_up() {
 #[test]
 fn tick_enemy_bullet_moves_down() {
     let mut s = make_state();
-    s.bullets.push(Bullet { x: 20, y: 10, owner: BulletOwner::Enemy });
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 10,
+        owner: BulletOwner::Enemy,
+    });
     let s2 = tick(&s, &mut seeded_rng());
-    let b: Vec<_> = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Enemy).collect();
+    let b: Vec<_> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Enemy)
+        .collect();
     assert_eq!(b.len(), 1);
     assert_eq!(b[0].y, 11);
 }
@@ -220,10 +264,22 @@ fn tick_enemy_bullet_moves_down() {
 fn tick_bullet_discarded_at_top_boundary() {
     let mut s = make_state();
     // y=3 → new_y=2 → kept; y=2 → new_y=1 → discarded
-    s.bullets.push(Bullet { x: 20, y: 3, owner: BulletOwner::Player });
-    s.bullets.push(Bullet { x: 15, y: 2, owner: BulletOwner::Player });
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 3,
+        owner: BulletOwner::Player,
+    });
+    s.bullets.push(Bullet {
+        x: 15,
+        y: 2,
+        owner: BulletOwner::Player,
+    });
     let s2 = tick(&s, &mut seeded_rng());
-    let kept: Vec<_> = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Player).collect();
+    let kept: Vec<_> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .collect();
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].y, 2);
 }
@@ -233,10 +289,22 @@ fn tick_bullet_discarded_at_bottom_boundary() {
     // height=20, boundary = height-3 = 17; new_y > 17 is discarded
     let mut s = make_state();
     // y=17 → new_y=18 → discarded; y=16 → new_y=17 → kept
-    s.bullets.push(Bullet { x: 20, y: 17, owner: BulletOwner::Enemy });
-    s.bullets.push(Bullet { x: 15, y: 16, owner: BulletOwner::Enemy });
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 17,
+        owner: BulletOwner::Enemy,
+    });
+    s.bullets.push(Bullet {
+        x: 15,
+        y: 16,
+        owner: BulletOwner::Enemy,
+    });
     let s2 = tick(&s, &mut seeded_rng());
-    let kept: Vec<_> = s2.bullets.iter().filter(|b| b.owner == BulletOwner::Enemy).collect();
+    let kept: Vec<_> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Enemy)
+        .collect();
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].y, 17);
 }
@@ -249,7 +317,11 @@ fn tick_enemies_move_on_interval_easy() {
     // We want frame N such that N+1 ≡ 0 (mod 14) → N=13
     let mut s = make_state();
     s.frame = 13;
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.enemies[0].y, 6); // moved on frame 14
 }
@@ -258,7 +330,11 @@ fn tick_enemies_move_on_interval_easy() {
 fn tick_enemies_do_not_move_off_interval() {
     let mut s = make_state();
     s.frame = 1; // next frame = 2, not divisible by 14
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.enemies[0].y, 5);
 }
@@ -269,7 +345,11 @@ fn tick_enemy_purged_past_bottom() {
     // Enemy at y=17 moves to 18 on frame 14 → purged
     let mut s = make_state();
     s.frame = 13;
-    s.enemies.push(Enemy { x: 10, y: 17, kind: EnemyKind::Spacecraft });
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 17,
+        kind: EnemyKind::Spacecraft,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     assert!(s2.enemies.is_empty());
 }
@@ -282,8 +362,16 @@ fn tick_player_bullet_hits_enemy_direct() {
     // Player bullet moves UP (y-1), so place it one row below the enemy.
     let mut s = make_state();
     s.frame = 1; // frame 2, no movement
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
-    s.bullets.push(Bullet { x: 10, y: 6, owner: BulletOwner::Player }); // moves to y=5
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.bullets.push(Bullet {
+        x: 10,
+        y: 6,
+        owner: BulletOwner::Player,
+    }); // moves to y=5
     let s2 = tick(&s, &mut seeded_rng());
     assert!(s2.enemies.is_empty());
     assert_eq!(s2.score, 100);
@@ -294,8 +382,16 @@ fn tick_player_bullet_hits_enemy_wide_box() {
     // Bounding box is 3-wide: x±1 also hits
     let mut s = make_state();
     s.frame = 1;
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
-    s.bullets.push(Bullet { x: 11, y: 6, owner: BulletOwner::Player }); // x+1, moves to y=5
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.bullets.push(Bullet {
+        x: 11,
+        y: 6,
+        owner: BulletOwner::Player,
+    }); // x+1, moves to y=5
     let s2 = tick(&s, &mut seeded_rng());
     assert!(s2.enemies.is_empty());
 }
@@ -304,8 +400,16 @@ fn tick_player_bullet_hits_enemy_wide_box() {
 fn tick_player_bullet_misses_enemy_outside_box() {
     let mut s = make_state();
     s.frame = 1;
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
-    s.bullets.push(Bullet { x: 12, y: 5, owner: BulletOwner::Player }); // x+2, outside
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.bullets.push(Bullet {
+        x: 12,
+        y: 5,
+        owner: BulletOwner::Player,
+    }); // x+2, outside
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.enemies.len(), 1);
 }
@@ -315,8 +419,16 @@ fn tick_player_bullet_hits_enemy_second_row() {
     // Bounding box is 2-tall: enemy.y+1 also hits
     let mut s = make_state();
     s.frame = 1;
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Spacecraft });
-    s.bullets.push(Bullet { x: 10, y: 6, owner: BulletOwner::Player }); // y+1
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.bullets.push(Bullet {
+        x: 10,
+        y: 6,
+        owner: BulletOwner::Player,
+    }); // y+1
     let s2 = tick(&s, &mut seeded_rng());
     assert!(s2.enemies.is_empty());
 }
@@ -325,8 +437,16 @@ fn tick_player_bullet_hits_enemy_second_row() {
 fn tick_octopus_scores_150() {
     let mut s = make_state();
     s.frame = 1;
-    s.enemies.push(Enemy { x: 10, y: 5, kind: EnemyKind::Octopus });
-    s.bullets.push(Bullet { x: 10, y: 6, owner: BulletOwner::Player }); // moves to y=5
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Octopus,
+    });
+    s.bullets.push(Bullet {
+        x: 10,
+        y: 6,
+        owner: BulletOwner::Player,
+    }); // moves to y=5
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.score, 150);
 }
@@ -340,7 +460,11 @@ fn tick_enemy_bullet_hits_player() {
     // Place bullet at player.y-1 so it moves into player.y.
     let mut s = make_state(); // player at (20, 16)
     s.frame = 1;
-    s.bullets.push(Bullet { x: 20, y: 15, owner: BulletOwner::Enemy }); // moves to y=16
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    }); // moves to y=16
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 2);
 }
@@ -349,7 +473,11 @@ fn tick_enemy_bullet_hits_player() {
 fn tick_player_loses_life_on_enemy_contact() {
     let mut s = make_state(); // player.y = 16
     s.frame = 1;
-    s.enemies.push(Enemy { x: 5, y: 16, kind: EnemyKind::Spacecraft });
+    s.enemies.push(Enemy {
+        x: 5,
+        y: 16,
+        kind: EnemyKind::Spacecraft,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 2);
 }
@@ -359,7 +487,11 @@ fn tick_game_over_when_lives_reach_zero() {
     let mut s = make_state();
     s.player.lives = 1;
     s.frame = 1;
-    s.bullets.push(Bullet { x: 20, y: 15, owner: BulletOwner::Enemy }); // moves to y=16
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    }); // moves to y=16
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 0);
     assert_eq!(s2.status, GameStatus::GameOver);
@@ -370,7 +502,11 @@ fn tick_no_game_over_when_lives_above_zero() {
     let mut s = make_state();
     s.player.lives = 2;
     s.frame = 1;
-    s.bullets.push(Bullet { x: 20, y: 15, owner: BulletOwner::Enemy }); // moves to y=16
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    }); // moves to y=16
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 1);
     assert_eq!(s2.status, GameStatus::Playing);
@@ -381,7 +517,11 @@ fn tick_lives_saturate_at_zero() {
     let mut s = make_state();
     s.player.lives = 0;
     s.frame = 1;
-    s.bullets.push(Bullet { x: 20, y: 16, owner: BulletOwner::Enemy });
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 16,
+        owner: BulletOwner::Enemy,
+    });
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 0); // saturating_sub, no underflow
 }
