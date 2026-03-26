@@ -12,7 +12,7 @@ use crossterm::{
     terminal,
     QueueableCommand,
 };
-use shooting_game::entities::{
+use crate::entities::{
     BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo,
     GameStatus, Level,
 };
