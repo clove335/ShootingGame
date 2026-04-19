@@ -6,14 +6,14 @@
 
 use std::io::Write;
 
+use crate::entities::{
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
+    Level,
+};
 use crossterm::{
     cursor,
     style::{self, Color, Print},
     terminal, QueueableCommand,
-};
-use shooting_game::entities::{
-    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
-    Level,
 };
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -71,11 +71,18 @@ pub fn render<W: Write>(
         out.queue(cursor::MoveTo(0, 0))?;
         out.queue(Print(" ".repeat(w as usize)))?;
 
-        // Rows 2 … h-3 — play area (cols 1 … w-2, inside the border walls)
-        let blank = " ".repeat(w.saturating_sub(2) as usize);
+        // Rows 2 … h-3 — clear the full row width (including col 0 and col w-1)
+        // so entities that rendered at the border columns (e.g. enemy lx=0 or
+        // bullet at x=w-1) leave no ghost.  Restore the wall glyphs afterward.
+        let blank = " ".repeat(w as usize);
         for row in 2u16..h.saturating_sub(2) {
-            out.queue(cursor::MoveTo(1, row))?;
+            out.queue(cursor::MoveTo(0, row))?;
             out.queue(Print(&blank))?;
+            out.queue(style::SetForegroundColor(C_BORDER))?;
+            out.queue(cursor::MoveTo(0, row))?;
+            out.queue(Print("│"))?;
+            out.queue(cursor::MoveTo(w.saturating_sub(1), row))?;
+            out.queue(Print("│"))?;
         }
     }
 
