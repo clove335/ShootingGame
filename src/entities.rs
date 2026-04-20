@@ -13,6 +13,7 @@ pub enum Level {
     Easy,
     Medium,
     Hard,
+    Extreme,
 }
 
 #[derive(Clone, Debug, PartialEq)]

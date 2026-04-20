@@ -15,17 +15,19 @@ use crate::entities::{
 
 fn enemy_move_interval(level: &Level) -> u64 {
     match level {
-        Level::Easy => 14,
-        Level::Medium => 8,
-        Level::Hard => 4,
+        Level::Easy => 22,    // new — very relaxed
+        Level::Medium => 14,  // old Easy
+        Level::Hard => 8,     // old Medium
+        Level::Extreme => 4,  // old Hard
     }
 }
 
 fn enemy_spawn_rate(level: &Level) -> u64 {
     match level {
-        Level::Easy => 90,
-        Level::Medium => 55,
-        Level::Hard => 28,
+        Level::Easy => 130,   // new — fewer opponents
+        Level::Medium => 90,  // old Easy
+        Level::Hard => 55,    // old Medium
+        Level::Extreme => 28, // old Hard
     }
 }
 
@@ -118,17 +120,13 @@ pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let mut bullets = state.bullets.clone();
 
     if is_spread {
-        // Three bullets: left, center, right — skip any that would exceed the cap
-        let offsets: [i32; 3] = [-2, 0, 2];
-        for dx in offsets {
-            if bullets
-                .iter()
-                .filter(|b| b.owner == BulletOwner::Player)
-                .count()
-                >= cap
-            {
-                break;
-            }
+        // Require all previous spread bullets to be gone before firing the next
+        // burst — prevents partial bursts (1 or 2 bullets) when bullets from the
+        // prior shot are still on screen and would push the count over the cap.
+        if active > 0 {
+            return state.clone();
+        }
+        for &dx in &[-2_i32, 0, 2] {
             let bx = (state.player.x + dx).clamp(1, state.width as i32 - 2);
             bullets.push(Bullet {
                 x: bx,
