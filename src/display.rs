@@ -158,11 +158,13 @@ fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Resu
         Level::Easy => "[ EASY ]",
         Level::Medium => "[ MEDIUM ]",
         Level::Hard => "[ HARD ]",
+        Level::Extreme => "[ EXTREME ]",
     };
     let level_color = match state.level {
         Level::Easy => Color::Green,
         Level::Medium => Color::Yellow,
         Level::Hard => Color::Red,
+        Level::Extreme => Color::Magenta,
     };
     let lx = (state.width / 2).saturating_sub(level_str.len() as u16 / 2);
     out.queue(cursor::MoveTo(lx, 0))?;

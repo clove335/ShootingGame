@@ -25,39 +25,46 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 // ── Simultaneous-input constants ──────────────────────────────────────────────
 
 /// Min frames between player movements while a direction key is held.
-/// 3 frames @ 30 FPS ≈ 10 moves/sec (≈ normal OS key-repeat feel).
-const MOVE_COOLDOWN: u32 = 3;
-
-/// Min frames between shots while Space is held.
-/// 8 frames @ 30 FPS ≈ 3.75 shots/sec (keeps the 3-bullet cap meaningful).
-const SHOOT_COOLDOWN: u32 = 8;
+/// 1.3 frames @ 30 FPS ≈ 23 moves/sec.
+const MOVE_COOLDOWN: f64 = 1.3;
 
 /// A key is considered "held" if its last press/repeat event arrived within
-/// this many frames.
-///
-/// # Why 20?
-///
-/// The OS sends an initial burst of zero repeats after a key is first pressed,
-/// then starts repeating at ~15–30 Hz only after its initial delay (typically
-/// 250–500 ms).  At 30 FPS that is 7–15 frames of silence.  HOLD_WINDOW must
-/// be ≥ that silence to bridge the gap:
-///
-///   Press → [silence ~10 frames] → repeat @ 2-frame intervals → ...
-///                 ↑ old window of 4 expired here
-///              ↑ new window of 20 covers this safely
-///
-/// On terminals with keyboard-enhancement support the `Release` event removes
-/// the key from the map immediately, so HOLD_WINDOW never causes sticky input.
-/// On classic terminals (no Release events) the maximum lag after releasing a
-/// key is 20 frames (~667 ms) — an acceptable trade-off.
+/// this many frames — bridges the OS key-repeat initial delay (~7–15 frames).
 const HOLD_WINDOW: u64 = 20;
 
-/// Returns true if `key` was seen within the last `HOLD_WINDOW` frames.
-fn is_held(key_frame: &HashMap<KeyCode, u64>, key: &KeyCode, frame: u64) -> bool {
-    key_frame
-        .get(key)
-        .map(|&last| frame.saturating_sub(last) <= HOLD_WINDOW)
-        .unwrap_or(false)
+/// Frames to keep a key alive after a Release before truly stopping.
+///
+/// Ghostty (Kitty keyboard protocol) fires a Release for the held movement key
+/// the moment a second key (e.g. Space) is pressed, and also stops sending
+/// Repeat for that key while the second key is held.  Without a grace period
+/// the movement key expires immediately.  6 frames (~200 ms) covers a quick
+/// Space tap; if Space is held longer the player briefly stops then resumes.
+const GRACE_PERIOD: u64 = 6;
+
+/// Returns true if `key` is currently held.
+fn is_held(
+    key_frame: &HashMap<KeyCode, u64>,
+    release_frame: &HashMap<KeyCode, u64>,
+    key: &KeyCode,
+    frame: u64,
+) -> bool {
+    match key_frame.get(key) {
+        None => false,
+        Some(&last_press) => {
+            if frame.saturating_sub(last_press) > HOLD_WINDOW {
+                return false;
+            }
+            match release_frame.get(key) {
+                None => true,
+                Some(&last_release) => {
+                    // Still held if last press came after the release, OR we are
+                    // within the grace period of a (potentially false) release.
+                    last_press >= last_release
+                        || frame.saturating_sub(last_release) <= GRACE_PERIOD
+                }
+            }
+        }
+    }
 }
 
 // ── High-score persistence ────────────────────────────────────────────────────
@@ -120,9 +127,10 @@ fn show_menu<W: Write>(
     out.queue(Print("Select difficulty:"))?;
 
     let options: &[(&str, &str, Color, &str)] = &[
-        ("1", "Easy  ", Color::Green, "Slow enemies, relaxed pace"),
-        ("2", "Medium", Color::Yellow, "Balanced challenge"),
-        ("3", "Hard  ", Color::Red, "Fast and relentless!"),
+        ("1", "Easy   ", Color::Green, "Very slow enemies, relaxed pace"),
+        ("2", "Medium ", Color::Yellow, "Balanced challenge"),
+        ("3", "Hard   ", Color::Red, "Fast and relentless!"),
+        ("4", "Extreme", Color::Magenta, "Unforgiving — good luck"),
     ];
 
     for (i, (key, label, color, desc)) in options.iter().enumerate() {
@@ -169,6 +177,7 @@ fn show_menu<W: Write>(
                 KeyCode::Char('1') => return Ok(MenuResult::Start(Level::Easy)),
                 KeyCode::Char('2') => return Ok(MenuResult::Start(Level::Medium)),
                 KeyCode::Char('3') => return Ok(MenuResult::Start(Level::Hard)),
+                KeyCode::Char('4') => return Ok(MenuResult::Start(Level::Extreme)),
                 KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                     return Ok(MenuResult::Quit);
                 }
@@ -202,10 +211,9 @@ fn game_loop<W: Write>(
 ) -> std::io::Result<bool> {
     let mut rng = thread_rng();
 
-    // Maps each held key → the frame it was last seen (press or repeat).
     let mut key_frame: HashMap<KeyCode, u64> = HashMap::new();
-    let mut move_cooldown: u32 = 0;
-    let mut shoot_cooldown: u32 = 0;
+    let mut release_frame: HashMap<KeyCode, u64> = HashMap::new();
+    let mut move_cooldown: f64 = 0.0;
     let mut frame: u64 = 0;
     let mut first_frame = true;
 
@@ -224,7 +232,6 @@ fn game_loop<W: Write>(
             match kind {
                 // Press: record key + handle one-shot actions
                 KeyEventKind::Press => {
-                    key_frame.insert(code, frame);
                     match code {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             return Ok(true);
@@ -237,33 +244,40 @@ fn game_loop<W: Write>(
                         {
                             return Ok(false);
                         }
-                        _ => {}
+                        // Space: single-shot on press — not tracked in key_frame so it
+                        // never interferes with held movement keys.
+                        KeyCode::Char(' ') if state.status == GameStatus::Playing => {
+                            *state = player_shoot(state);
+                        }
+                        _ => {
+                            key_frame.insert(code, frame);
+                        }
                     }
                 }
                 // Repeat: refresh timestamp so key stays "held"
                 KeyEventKind::Repeat => {
                     key_frame.insert(code, frame);
                 }
-                // Release: remove key immediately (keyboard-enhancement path)
+                // Release: record the release frame instead of removing from
+                // key_frame directly — a subsequent Repeat (same or next frame)
+                // will set key_frame[key] >= release_frame[key], keeping the
+                // key live and preventing false stops from chord detection.
                 KeyEventKind::Release => {
-                    key_frame.remove(&code);
+                    release_frame.insert(code, frame);
                 }
             }
         }
 
         // ── Apply held-key actions every frame ────────────────────────────────
         if state.status == GameStatus::Playing {
-            // Compute which directional / shoot keys are currently live
-            let left = is_held(&key_frame, &KeyCode::Left, frame)
-                || is_held(&key_frame, &KeyCode::Char('a'), frame)
-                || is_held(&key_frame, &KeyCode::Char('A'), frame);
-            let right = is_held(&key_frame, &KeyCode::Right, frame)
-                || is_held(&key_frame, &KeyCode::Char('d'), frame)
-                || is_held(&key_frame, &KeyCode::Char('D'), frame);
-            let shoot = is_held(&key_frame, &KeyCode::Char(' '), frame);
+            let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
+            let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
 
-            // Movement — throttled so the player doesn't teleport
-            if move_cooldown == 0 {
+            if move_cooldown <= 0.0 {
                 if left {
                     *state = move_player_left(state);
                     move_cooldown = MOVE_COOLDOWN;
@@ -272,18 +286,9 @@ fn game_loop<W: Write>(
                     move_cooldown = MOVE_COOLDOWN;
                 }
             }
-
-            // Shooting — throttled so holding Space doesn't drain all 3
-            // bullet slots in a single frame
-            if shoot_cooldown == 0 && shoot {
-                *state = player_shoot(state);
-                shoot_cooldown = SHOOT_COOLDOWN;
-            }
         }
 
-        // Decrement cooldown timers
-        move_cooldown = move_cooldown.saturating_sub(1);
-        shoot_cooldown = shoot_cooldown.saturating_sub(1);
+        move_cooldown = (move_cooldown - 1.0).max(0.0);
 
         if state.status == GameStatus::Playing {
             *state = tick(state, &mut rng);

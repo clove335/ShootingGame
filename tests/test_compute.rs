@@ -313,17 +313,16 @@ fn tick_bullet_discarded_at_bottom_boundary() {
 
 #[test]
 fn tick_enemies_move_on_interval_easy() {
-    // Easy interval = 14; frame 0→1: frame 1 % 14 ≠ 0, no move
-    // We want frame N such that N+1 ≡ 0 (mod 14) → N=13
+    // Easy interval = 22; we want frame N such that N+1 ≡ 0 (mod 22) → N=21
     let mut s = make_state();
-    s.frame = 13;
+    s.frame = 21;
     s.enemies.push(Enemy {
         x: 10,
         y: 5,
         kind: EnemyKind::Spacecraft,
     });
     let s2 = tick(&s, &mut seeded_rng());
-    assert_eq!(s2.enemies[0].y, 6); // moved on frame 14
+    assert_eq!(s2.enemies[0].y, 6); // moved on frame 22
 }
 
 #[test]
@@ -342,9 +341,9 @@ fn tick_enemies_do_not_move_off_interval() {
 #[test]
 fn tick_enemy_purged_past_bottom() {
     // height=20, purge when e.y >= height-2 = 18
-    // Enemy at y=17 moves to 18 on frame 14 → purged
+    // Enemy at y=17 moves to 18 on frame 22 → purged
     let mut s = make_state();
-    s.frame = 13;
+    s.frame = 21;
     s.enemies.push(Enemy {
         x: 10,
         y: 17,
@@ -530,9 +529,9 @@ fn tick_lives_saturate_at_zero() {
 
 #[test]
 fn tick_enemy_spawns_on_interval() {
-    // Easy spawn_rate = 90; frame 89 → next frame 90 → spawn
+    // Easy spawn_rate = 130; frame 129 → next frame 130 → spawn
     let mut s = make_state();
-    s.frame = 89;
+    s.frame = 129;
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.enemies.len(), 1);
     assert_eq!(s2.enemies[0].y, 2);
