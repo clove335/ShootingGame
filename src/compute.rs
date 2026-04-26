@@ -264,7 +264,9 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         if bullet.owner != BulletOwner::Enemy {
             continue;
         }
-        if bullet.x == state.player.x && bullet.y == state.player.y {
+        if (bullet.x - state.player.x).abs() <= 1
+            && (bullet.y == state.player.y || bullet.y == state.player.y + 1)
+        {
             player_hit = true;
             used_bullets2.push(bi);
         }
