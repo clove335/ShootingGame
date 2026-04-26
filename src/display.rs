@@ -6,14 +6,14 @@
 
 use std::io::Write;
 
+use crate::entities::{
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
+    Level,
+};
 use crossterm::{
     cursor,
     style::{self, Color, Print},
     terminal, QueueableCommand,
-};
-use shooting_game::entities::{
-    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
-    Level,
 };
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -71,11 +71,20 @@ pub fn render<W: Write>(
         out.queue(cursor::MoveTo(0, 0))?;
         out.queue(Print(" ".repeat(w as usize)))?;
 
-        // Rows 2 … h-3 — play area (cols 1 … w-2, inside the border walls)
+        // Rows 2 … h-3 — clear play area and redraw side walls each frame.
+        // Redrawing walls prevents ghost sprites when entities move through
+        // col 0 or col w-1 (outside the cols-1..w-2 blank region).
         let blank = " ".repeat(w.saturating_sub(2) as usize);
         for row in 2u16..h.saturating_sub(2) {
+            out.queue(style::SetForegroundColor(C_BORDER))?;
+            out.queue(cursor::MoveTo(0, row))?;
+            out.queue(Print("│"))?;
+            out.queue(style::ResetColor)?;
             out.queue(cursor::MoveTo(1, row))?;
             out.queue(Print(&blank))?;
+            out.queue(style::SetForegroundColor(C_BORDER))?;
+            out.queue(cursor::MoveTo(w.saturating_sub(1), row))?;
+            out.queue(Print("│"))?;
         }
     }
 

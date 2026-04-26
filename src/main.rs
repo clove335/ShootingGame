@@ -1,4 +1,4 @@
-mod display;
+use shooting_game::display;
 
 use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
@@ -27,7 +27,8 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 
 /// Min frames between player movements while a direction key is held.
 /// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
-const MOVE_COOLDOWN: f64 = 1.0;
+//const MOVE_COOLDOWN: f64 = 1.0;
+const MOVE_COOLDOWN: f64 = 0.5;
 
 /// A key is considered "held" if its last press/repeat event arrived within
 /// this many frames — bridges the OS key-repeat initial delay (~7–15 frames).
