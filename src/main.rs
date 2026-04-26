@@ -1,8 +1,9 @@
+mod db;
+
 use shooting_game::display;
 
 use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -29,24 +30,6 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 /// Min frames between player movements while a direction key is held.
 /// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
 const MOVE_COOLDOWN: f64 = 0.1;
-
-// ── High-score persistence ────────────────────────────────────────────────────
-
-fn high_score_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".shooting_game_score")
-}
-
-fn load_high_score() -> u32 {
-    std::fs::read_to_string(high_score_path())
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-}
-
-fn save_high_score(score: u32) {
-    let _ = std::fs::write(high_score_path(), score.to_string());
-}
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
@@ -377,7 +360,9 @@ fn main() -> std::io::Result<()> {
 }
 
 fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()> {
-    let mut high_score = load_high_score();
+    let username = std::env::var("USER").unwrap_or_else(|_| "Player".to_string());
+    let db_conn = db::open();
+    let mut high_score = db_conn.as_ref().map_or(0, db::load_best_score);
 
     loop {
         match show_menu(out, rx, high_score)? {
@@ -387,16 +372,20 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
                 let mut state = init_state(level, width, height, high_score);
                 let quit = game_loop(out, &mut state, rx)?;
 
-                // Persist new high score if beaten
+                if state.status == GameStatus::GameOver {
+                    if let Some(ref conn) = db_conn {
+                        let _ = db::insert_score(conn, &username, &state.level, state.score);
+                        let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
+                    }
+                }
+
                 if state.score > high_score {
                     high_score = state.score;
-                    save_high_score(high_score);
                 }
 
                 if quit {
                     break;
                 }
-                // Otherwise loop back to the menu
             }
         }
     }
