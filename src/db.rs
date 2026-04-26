@@ -72,6 +72,18 @@ pub fn upsert_top_score(
     Ok(())
 }
 
+/// Best score for a specific difficulty (used for the in-game HUD).
+pub fn load_top_score(conn: &Connection, level: &Level) -> u32 {
+    conn.query_row(
+        "SELECT COALESCE(MAX(points), 0) FROM top_scores
+         WHERE difficulty = ?1 AND deleted_at IS NULL",
+        params![level_str(level)],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|v| v as u32)
+    .unwrap_or(0)
+}
+
 /// Best score across all difficulties (used for the menu display).
 pub fn load_best_score(conn: &Connection) -> u32 {
     conn.query_row(
