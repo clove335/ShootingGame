@@ -28,7 +28,7 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 
 /// Min frames between player movements while a direction key is held.
 /// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
-const MOVE_COOLDOWN: f64 = 0.5;
+const MOVE_COOLDOWN: f64 = 0.1;
 
 // ── High-score persistence ────────────────────────────────────────────────────
 
