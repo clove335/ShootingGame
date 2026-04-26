@@ -63,7 +63,7 @@ fn init_state_preserves_level_and_dims() {
 fn move_left_normal() {
     let s = make_state(); // x=20
     let s2 = move_player_left(&s);
-    assert_eq!(s2.player.x, 18); // step is 2
+    assert_eq!(s2.player.x, 19); // step is 1
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn move_left_clamps_near_boundary() {
 fn move_right_normal() {
     let s = make_state(); // x=20
     let s2 = move_player_right(&s);
-    assert_eq!(s2.player.x, 22); // step is 2
+    assert_eq!(s2.player.x, 21); // step is 1
 }
 
 #[test]

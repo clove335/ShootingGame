@@ -1,3 +1,5 @@
+use shooting_game::display;
+
 use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
 use std::path::PathBuf;
@@ -17,54 +19,16 @@ use crossterm::{
 use rand::thread_rng;
 
 use shooting_game::compute::{init_state, move_player_left, move_player_right, player_shoot, tick};
-use shooting_game::display;
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
+use shooting_game::input_keyboard::is_held;
 
 const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 
 // ── Simultaneous-input constants ──────────────────────────────────────────────
 
 /// Min frames between player movements while a direction key is held.
-/// 1.3 frames @ 30 FPS ≈ 23 moves/sec.
-const MOVE_COOLDOWN: f64 = 1.3;
-
-/// A key is considered "held" if its last press/repeat event arrived within
-/// this many frames — bridges the OS key-repeat initial delay (~7–15 frames).
-const HOLD_WINDOW: u64 = 20;
-
-/// Frames to keep a key alive after a Release before truly stopping.
-///
-/// Ghostty (Kitty keyboard protocol) fires a Release for the held movement key
-/// the moment a second key (e.g. Space) is pressed, and also stops sending
-/// Repeat for that key while the second key is held.  Without a grace period
-/// the movement key expires immediately.  6 frames (~200 ms) covers a quick
-/// Space tap; if Space is held longer the player briefly stops then resumes.
-const GRACE_PERIOD: u64 = 6;
-
-/// Returns true if `key` is currently held.
-fn is_held(
-    key_frame: &HashMap<KeyCode, u64>,
-    release_frame: &HashMap<KeyCode, u64>,
-    key: &KeyCode,
-    frame: u64,
-) -> bool {
-    match key_frame.get(key) {
-        None => false,
-        Some(&last_press) => {
-            if frame.saturating_sub(last_press) > HOLD_WINDOW {
-                return false;
-            }
-            match release_frame.get(key) {
-                None => true,
-                Some(&last_release) => {
-                    // Still held if last press came after the release, OR we are
-                    // within the grace period of a (potentially false) release.
-                    last_press >= last_release || frame.saturating_sub(last_release) <= GRACE_PERIOD
-                }
-            }
-        }
-    }
-}
+/// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
+const MOVE_COOLDOWN: f64 = 0.1;
 
 // ── High-score persistence ────────────────────────────────────────────────────
 
@@ -218,6 +182,11 @@ fn game_loop<W: Write>(
     let mut key_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut release_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut move_cooldown: f64 = 0.0;
+    // True once a Repeat event (or a rapid-fire os-simulated Press) has arrived
+    // for each direction since the last genuine Press.  Continuous movement only
+    // fires when this is true, so a tap (Press + Release, no Repeat) stays one step.
+    let mut left_has_repeat = false;
+    let mut right_has_repeat = false;
     let mut frame: u64 = 0;
     let mut first_frame = true;
 
@@ -253,20 +222,67 @@ fn game_loop<W: Write>(
                         KeyCode::Char(' ') if state.status == GameStatus::Playing => {
                             *state = player_shoot(state);
                         }
+                        // Movement keys: move one step immediately on press.
+                        // For classic terminals the OS sends repeated Press events
+                        // instead of Repeat; treat a rapid second Press (within 4
+                        // frames) as a Repeat so continuous movement still works.
+                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            let rapid = key_frame
+                                .get(&code)
+                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                            if rapid {
+                                left_has_repeat = true;
+                            } else {
+                                *state = move_player_left(state);
+                                left_has_repeat = false;
+                            }
+                            key_frame.insert(code, frame);
+                        }
+                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            let rapid = key_frame
+                                .get(&code)
+                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                            if rapid {
+                                right_has_repeat = true;
+                            } else {
+                                *state = move_player_right(state);
+                                right_has_repeat = false;
+                            }
+                            key_frame.insert(code, frame);
+                        }
                         _ => {
                             key_frame.insert(code, frame);
                         }
                     }
                 }
-                // Repeat: refresh timestamp so key stays "held"
+                // Repeat: refresh timestamp and mark direction as held.
                 KeyEventKind::Repeat => {
+                    match code {
+                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
+                            left_has_repeat = true;
+                        }
+                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
+                            right_has_repeat = true;
+                        }
+                        _ => {}
+                    }
                     key_frame.insert(code, frame);
                 }
-                // Release: record the release frame instead of removing from
-                // key_frame directly — a subsequent Repeat (same or next frame)
-                // will set key_frame[key] >= release_frame[key], keeping the
-                // key live and preventing false stops from chord detection.
+                // Release: clear the repeat flag and record release frame.
                 KeyEventKind::Release => {
+                    match code {
+                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
+                            left_has_repeat = false;
+                        }
+                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
+                            right_has_repeat = false;
+                        }
+                        _ => {}
+                    }
                     release_frame.insert(code, frame);
                 }
             }
@@ -282,10 +298,10 @@ fn game_loop<W: Write>(
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
 
             if move_cooldown <= 0.0 {
-                if left {
+                if left && left_has_repeat {
                     *state = move_player_left(state);
                     move_cooldown = MOVE_COOLDOWN;
-                } else if right {
+                } else if right && right_has_repeat {
                     *state = move_player_right(state);
                     move_cooldown = MOVE_COOLDOWN;
                 }
