@@ -3,6 +3,7 @@
 ## Indexes
 - Motivation
 - Installation
+- License
 
 ## Motivation
 - Want to create some games executed on TUI with Rust
@@ -19,3 +20,6 @@ $ source ~/.bashrc
 $ cargo build
 $ cargo run
 ```
+
+## License
+MIT License — see [LICENSE](LICENSE) for details.
