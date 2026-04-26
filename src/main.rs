@@ -375,12 +375,14 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
                 if state.status == GameStatus::GameOver {
                     if let Some(ref conn) = db_conn {
                         let _ = db::insert_score(conn, &username, &state.level, state.score);
-                        let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
                     }
                 }
 
                 if state.score > high_score {
                     high_score = state.score;
+                    if let Some(ref conn) = db_conn {
+                        let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
+                    }
                 }
 
                 if quit {
