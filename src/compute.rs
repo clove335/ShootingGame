@@ -77,7 +77,7 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
 // ── Input-driven state transitions (pure) ───────────────────────────────────
 
 pub fn move_player_left(state: &EntireGameStateInfo) -> EntireGameStateInfo {
-    let new_x = (state.player.x - 2).max(1);
+    let new_x = (state.player.x - 1).max(1);
     EntireGameStateInfo {
         player: Player {
             x: new_x,
@@ -88,7 +88,7 @@ pub fn move_player_left(state: &EntireGameStateInfo) -> EntireGameStateInfo {
 }
 
 pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
-    let new_x = (state.player.x + 2).min(state.width as i32 - 2);
+    let new_x = (state.player.x + 1).min(state.width as i32 - 2);
     EntireGameStateInfo {
         player: Player {
             x: new_x,
@@ -195,7 +195,7 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
     let spawn_rate = enemy_spawn_rate(&state.level);
     let mut enemies = enemies;
     if frame.is_multiple_of(spawn_rate) {
-        let x = rng.gen_range(1..(state.width as i32 - 1));
+        let x = rng.gen_range(2..(state.width as i32 - 2));
         let kind = if rng.gen_bool(0.6) {
             EnemyKind::Spacecraft
         } else {
