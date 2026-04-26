@@ -353,6 +353,7 @@ fn draw_debug_overlay<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
         None => "-".to_string(),
     };
     let god = if state.god_mode { "ON" } else { "OFF" };
+    let slow = if state.slow_mo { "ON" } else { "OFF" };
 
     let lines = [
         format!(
@@ -364,7 +365,7 @@ fn draw_debug_overlay<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
             player_bullets,
             enemy_bullets
         ),
-        format!(" PU:{:<20} GOD:{}", pu, god),
+        format!(" PU:{:<18} GOD:{}  SLOW:{}", pu, god, slow),
     ];
 
     for (i, line) in lines.iter().enumerate() {
@@ -375,6 +376,32 @@ fn draw_debug_overlay<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
         out.queue(Print(line))?;
         out.queue(style::ResetColor)?;
     }
+
+    // Collision boxes
+    draw_hitbox(out, state.player.x, state.player.y, Color::Cyan)?;
+    for enemy in &state.enemies {
+        draw_hitbox(out, enemy.x, enemy.y, Color::Red)?;
+    }
+
+    Ok(())
+}
+
+/// Draw a 3-wide × 2-tall bounding box around (cx, top_y).
+fn draw_hitbox<W: Write>(out: &mut W, cx: i32, top_y: i32, color: Color) -> std::io::Result<()> {
+    let corners = [
+        (cx - 1, top_y),
+        (cx + 1, top_y),
+        (cx - 1, top_y + 1),
+        (cx + 1, top_y + 1),
+    ];
+    out.queue(style::SetForegroundColor(color))?;
+    for (x, y) in corners {
+        if x >= 0 && y >= 0 {
+            out.queue(cursor::MoveTo(x as u16, y as u16))?;
+            out.queue(Print("·"))?;
+        }
+    }
+    out.queue(style::ResetColor)?;
     Ok(())
 }
 

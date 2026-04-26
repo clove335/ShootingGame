@@ -73,6 +73,7 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
         height,
         debug_mode: false,
         god_mode: false,
+        slow_mo: false,
     }
 }
 
@@ -361,7 +362,7 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         .collect();
 
     // ── 11. Update player & status ────────────────────────────────────────────
-    let hit_lives = if player_hit {
+    let hit_lives = if player_hit && !state.god_mode {
         state.player.lives.saturating_sub(1)
     } else {
         state.player.lives

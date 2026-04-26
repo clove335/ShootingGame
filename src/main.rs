@@ -250,6 +250,10 @@ fn game_loop<W: Write>(
                         KeyCode::Char('g') | KeyCode::Char('G') if state.debug_mode => {
                             state.god_mode = !state.god_mode;
                         }
+                        // S: toggle slow-mo (only while debug is on).
+                        KeyCode::Char('s') | KeyCode::Char('S') if state.debug_mode => {
+                            state.slow_mo = !state.slow_mo;
+                        }
                         _ => {
                             key_frame.insert(code, frame);
                         }
@@ -318,9 +322,10 @@ fn game_loop<W: Write>(
         display::render(out, state, first_frame)?;
         first_frame = false;
 
+        let target = if state.slow_mo { FRAME * 4 } else { FRAME };
         let elapsed = frame_start.elapsed();
-        if elapsed < FRAME {
-            std::thread::sleep(FRAME - elapsed);
+        if elapsed < target {
+            std::thread::sleep(target - elapsed);
         }
     }
 }

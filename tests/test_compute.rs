@@ -24,6 +24,7 @@ fn make_state() -> EntireGameStateInfo {
         height: 20,
         debug_mode: false,
         god_mode: false,
+        slow_mo: false,
     }
 }
 
