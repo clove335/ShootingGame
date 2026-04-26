@@ -85,4 +85,8 @@ pub struct EntireGameStateInfo {
     pub frame: u64,
     pub width: u16,
     pub height: u16,
+    /// Developer flags — invisible to normal players.
+    pub debug_mode: bool,
+    pub god_mode: bool,
+    pub slow_mo: bool,
 }

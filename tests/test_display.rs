@@ -120,6 +120,9 @@ fn make_state(width: u16, height: u16) -> EntireGameStateInfo {
         frame: 0,
         width,
         height,
+        debug_mode: false,
+        god_mode: false,
+        slow_mo: false,
     }
 }
 
