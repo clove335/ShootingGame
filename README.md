@@ -2,6 +2,7 @@
 - Written in Rust
 ## Indexes
 - Motivation
+- Controls
 - Installation
 - License
 
@@ -9,6 +10,20 @@
 - Want to create some games executed on TUI with Rust
 - Want to use Claude Code for building some programs
 
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| `←` / `A` | Move left |
+| `→` / `D` | Move right |
+| `Space` | Shoot |
+| `Q` / `Esc` | Quit |
+| `R` | Restart (Game Over screen) |
+
+### Movement feel
+- **Single tap** — moves exactly 1 step; press fires immediately, then stops
+- **Hold** — 1 step on press, ~267 ms pause, then continuous movement at 30 cols/sec
 
 ## Installation
 ``` Bash
