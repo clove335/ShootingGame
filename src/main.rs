@@ -236,7 +236,7 @@ fn game_loop<W: Write>(
                         {
                             let rapid = key_frame
                                 .get(&code)
-                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                                .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
                                 left_has_repeat = true;
                             } else {
@@ -250,7 +250,7 @@ fn game_loop<W: Write>(
                         {
                             let rapid = key_frame
                                 .get(&code)
-                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                                .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
                                 right_has_repeat = true;
                             } else {
