@@ -3,17 +3,18 @@ use std::collections::HashMap;
 use crossterm::event::KeyCode;
 
 /// A key is considered "held" if its last press/repeat event arrived within
-/// this many frames — bridges the OS key-repeat initial delay (~7–15 frames).
-pub const HOLD_WINDOW: u64 = 20;
+/// this many frames.  3 frames (~100 ms) is enough to stay live between
+/// consecutive Repeat events while expiring quickly after physical release.
+pub const HOLD_WINDOW: u64 = 5;
 
 /// Frames to keep a key alive after a Release before truly stopping.
 ///
 /// Ghostty (Kitty keyboard protocol) fires a Release for the held movement key
 /// the moment a second key (e.g. Space) is pressed, and also stops sending
 /// Repeat for that key while the second key is held.  Without a grace period
-/// the movement key expires immediately.  6 frames (~200 ms) covers a quick
+/// the movement key expires immediately.  1 frame (~33 ms) covers a quick
 /// Space tap; if Space is held longer the player briefly stops then resumes.
-pub const GRACE_PERIOD: u64 = 6;
+pub const GRACE_PERIOD: u64 = 1;
 
 /// Returns true if `key` is currently held.
 pub fn is_held(
