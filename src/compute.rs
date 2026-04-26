@@ -15,10 +15,10 @@ use crate::entities::{
 
 fn enemy_move_interval(level: &Level) -> u64 {
     match level {
-        Level::Easy => 22,    // new — very relaxed
-        Level::Medium => 14,  // old Easy
-        Level::Hard => 8,     // old Medium
-        Level::Extreme => 4,  // old Hard
+        Level::Easy => 22,   // new — very relaxed
+        Level::Medium => 14, // old Easy
+        Level::Hard => 8,    // old Medium
+        Level::Extreme => 4, // old Hard
     }
 }
 
@@ -264,7 +264,9 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         if bullet.owner != BulletOwner::Enemy {
             continue;
         }
-        if bullet.x == state.player.x && bullet.y == state.player.y {
+        if (bullet.x - state.player.x).abs() <= 1
+            && (bullet.y == state.player.y || bullet.y == state.player.y + 1)
+        {
             player_hit = true;
             used_bullets2.push(bi);
         }

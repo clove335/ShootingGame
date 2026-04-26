@@ -59,8 +59,7 @@ fn is_held(
                 Some(&last_release) => {
                     // Still held if last press came after the release, OR we are
                     // within the grace period of a (potentially false) release.
-                    last_press >= last_release
-                        || frame.saturating_sub(last_release) <= GRACE_PERIOD
+                    last_press >= last_release || frame.saturating_sub(last_release) <= GRACE_PERIOD
                 }
             }
         }
@@ -127,7 +126,12 @@ fn show_menu<W: Write>(
     out.queue(Print("Select difficulty:"))?;
 
     let options: &[(&str, &str, Color, &str)] = &[
-        ("1", "Easy   ", Color::Green, "Very slow enemies, relaxed pace"),
+        (
+            "1",
+            "Easy   ",
+            Color::Green,
+            "Very slow enemies, relaxed pace",
+        ),
         ("2", "Medium ", Color::Yellow, "Balanced challenge"),
         ("3", "Hard   ", Color::Red, "Fast and relentless!"),
         ("4", "Extreme", Color::Magenta, "Unforgiving — good luck"),

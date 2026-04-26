@@ -525,6 +525,97 @@ fn tick_lives_saturate_at_zero() {
     assert_eq!(s2.player.lives, 0); // saturating_sub, no underflow
 }
 
+// ── tick — enemy bullet hitbox: 3-wide × 2-tall ──────────────────────────────
+//
+// Player sprite:   ▲        ← row player.y     (tip, 1 col wide)
+//                 /█\       ← row player.y+1   (fuselage+wings, 3 cols wide)
+//
+// Hitbox covers both rows at x ± 1.
+
+#[test]
+fn tick_enemy_bullet_hits_player_fuselage_center() {
+    // Bullet at (player.x, player.y) → moves to (player.x, player.y+1) = fuselage center
+    let mut s = make_state(); // player at (20, 16)
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 16,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2);
+}
+
+#[test]
+fn tick_enemy_bullet_hits_player_left_wing() {
+    // Bullet at (player.x-1, player.y) → moves to (player.x-1, player.y+1) = left wing
+    let mut s = make_state();
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 19,
+        y: 16,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2);
+}
+
+#[test]
+fn tick_enemy_bullet_hits_player_right_wing() {
+    // Bullet at (player.x+1, player.y) → moves to (player.x+1, player.y+1) = right wing
+    let mut s = make_state();
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 21,
+        y: 16,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2);
+}
+
+#[test]
+fn tick_enemy_bullet_hits_player_tip_off_center() {
+    // Bullet at (player.x-1, player.y-1) → moves to (player.x-1, player.y) = tip row, x-1
+    let mut s = make_state();
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 19,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2);
+}
+
+#[test]
+fn tick_enemy_bullet_misses_player_too_far() {
+    // Bullet at (player.x+2, player.y-1) → moves to (player.x+2, player.y): x=22, outside ±1
+    let mut s = make_state();
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 22,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 3);
+}
+
+#[test]
+fn tick_enemy_bullet_consumed_on_hit() {
+    // Bullet that hits the player should be removed from the field
+    let mut s = make_state();
+    s.frame = 1;
+    s.bullets.push(Bullet {
+        x: 20,
+        y: 15,
+        owner: BulletOwner::Enemy,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(s2.bullets.iter().all(|b| b.owner != BulletOwner::Enemy));
+}
+
 // ── tick — enemy spawn ────────────────────────────────────────────────────────
 
 #[test]
