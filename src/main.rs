@@ -242,6 +242,14 @@ fn game_loop<W: Write>(
                             }
                             key_frame.insert(code, frame);
                         }
+                        // Backtick: toggle debug overlay.
+                        KeyCode::Char('`') => {
+                            state.debug_mode = !state.debug_mode;
+                        }
+                        // G: toggle god mode (only while debug is on).
+                        KeyCode::Char('g') | KeyCode::Char('G') if state.debug_mode => {
+                            state.god_mode = !state.god_mode;
+                        }
                         _ => {
                             key_frame.insert(code, frame);
                         }

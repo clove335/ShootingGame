@@ -71,6 +71,8 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
         frame: 0,
         width,
         height,
+        debug_mode: false,
+        god_mode: false,
     }
 }
 
