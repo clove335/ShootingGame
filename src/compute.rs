@@ -15,10 +15,10 @@ use crate::entities::{
 
 fn enemy_move_interval(level: &Level) -> u64 {
     match level {
-        Level::Easy => 22,    // new — very relaxed
-        Level::Medium => 14,  // old Easy
-        Level::Hard => 8,     // old Medium
-        Level::Extreme => 4,  // old Hard
+        Level::Easy => 22,   // new — very relaxed
+        Level::Medium => 14, // old Easy
+        Level::Hard => 8,    // old Medium
+        Level::Extreme => 4, // old Hard
     }
 }
 
