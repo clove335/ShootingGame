@@ -5,14 +5,27 @@
 - Environment: Terminal Emulator(Ghostty)
 - Language: Rust
 - Mode: just a single player mode(maybe adding multiplayer mode in future)
-- Level selects: Easy, Medium, Hard
+- Level selects: Easy, Medium, Hard, Extreme
 - Objects: 
 -- single player: a white Space craft
 -- Opponents: 
 --- Space craft with shocking green
 --- Octopas (with Red) 
--- bullets: 
-- Rules: if bullets by player hit on 
+-- bullets:
+--- player bullet: cyan ║, fires upward from the player tip
+--- enemy bullet: magenta ↓, fires downward from opponents
+-- power-ups (falling items, catch to activate):
+--- ★ SpreadShot (yellow)  — 3-way spread fire for ~10 seconds
+--- ♥ ExtraLife  (magenta) — instantly adds 1 life (max 5)
+--- ! RapidFire  (cyan)    — raises on-screen bullet cap to 6 for ~10 seconds
+-- player sprite: 2-row, 3-col
+---   ▲      ← tip (row y)
+---  /█\     ← fuselage + wings (row y+1)
+--- hitbox: 3-wide × 2-tall (x±1, rows y and y+1)
+- Rules:
+-- if player bullets hit an opponent, the opponent disappears and the player earns points (Spacecraft: 100pts, Octopus: 150pts)
+-- if enemy bullets hit the player, or an opponent reaches the player's row, the player loses 1 life
+-- player loses all lives → Game Over
 - Direction: 
 -- A single player is located in a center buttom
 -- Opponents come from up to down 
@@ -42,7 +55,12 @@ ex.)
 ```
 - Before add new features, make sure the below lists and add the features
     - Pull from remote repositories into main to make sure the local branches are updated
-    - After you confirm that branches are latest, create branches with the unit of features
+    - After pulling, merge updated diffs of accepted pull requests into develop
+    - Write codes and execute tests on develop branch(updated)
+    - Old rules: After you confirm that branches are latest, create branches with the unit of features
+- After add new features
+    - use git add(ex. git add -u, git add .) git diff, cargo test
+    - make sure execute `cargo fmt --all ` locally to pass the CIs on pull requests
 
 ### Tests Strategy
 - Use cargo for library management, tests (needless to say...)
@@ -54,10 +72,10 @@ ex.)
     - use GitHub Actions for CI/CD
 - Test modules: create test codes under tests/ directory
 - Files covered:
-    src/entities/mod.rs   — derive-trait contract tests
-    src/compute/mod.rs    — all pure game-logic functions (primary surface)
-    src/main.rs           — HeldKey struct (private; must be in-file)
-    src/display/mod.rs    — EXCLUDED (crossterm I/O side effects)
+    src/entities.rs   — derive-trait contract tests
+    src/compute.rs    — all pure game-logic functions (primary surface)
+    src/main.rs       — HeldKey struct (private; must be in-file)
+    src/display.rs    — EXCLUDED (crossterm I/O side effects)
 - Seeded RNG for tick() tests:
     use rand::rngs::StdRng;
     use rand::SeedableRng;
