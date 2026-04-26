@@ -195,6 +195,11 @@ fn game_loop<W: Write>(
         frame += 1;
 
         // ── Drain all pending input events (non-blocking) ─────────────────────
+        // Release events are deferred to the end of the drain so that a straggler
+        // Repeat arriving in the same OS-queue flush cannot re-enable a key that
+        // was just released.
+        let mut deferred_releases: Vec<KeyCode> = Vec::new();
+
         while let Ok(Event::Key(KeyEvent {
             code,
             kind,
@@ -231,7 +236,7 @@ fn game_loop<W: Write>(
                         {
                             let rapid = key_frame
                                 .get(&code)
-                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                                .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
                                 left_has_repeat = true;
                             } else {
@@ -245,7 +250,7 @@ fn game_loop<W: Write>(
                         {
                             let rapid = key_frame
                                 .get(&code)
-                                .map_or(false, |&last| frame.saturating_sub(last) <= 4);
+                                .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
                                 right_has_repeat = true;
                             } else {
@@ -272,20 +277,25 @@ fn game_loop<W: Write>(
                     }
                     key_frame.insert(code, frame);
                 }
-                // Release: clear the repeat flag and record release frame.
+                // Release: defer until all Press/Repeat events this frame are handled.
                 KeyEventKind::Release => {
-                    match code {
-                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
-                            left_has_repeat = false;
-                        }
-                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
-                            right_has_repeat = false;
-                        }
-                        _ => {}
-                    }
-                    release_frame.insert(code, frame);
+                    deferred_releases.push(code);
                 }
             }
+        }
+
+        // Apply deferred releases — runs after all Repeat events this cycle.
+        for code in deferred_releases {
+            match code {
+                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
+                    left_has_repeat = false;
+                }
+                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
+                    right_has_repeat = false;
+                }
+                _ => {}
+            }
+            release_frame.insert(code, frame);
         }
 
         // ── Apply held-key actions every frame ────────────────────────────────

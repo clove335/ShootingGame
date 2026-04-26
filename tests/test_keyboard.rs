@@ -100,8 +100,8 @@ fn ghostty_false_release_kept_alive_by_grace() {
     press(&mut kf, KeyCode::Left, 50);
     // Space pressed at frame 51 — terminal fires a false Release for Left
     release(&mut rf, KeyCode::Left, 51);
-    // Two frames later Left should still appear held (grace covers it)
-    assert!(is_held(&kf, &rf, &KeyCode::Left, 53));
+    // Exactly at the grace boundary — Left should still appear held
+    assert!(is_held(&kf, &rf, &KeyCode::Left, 51 + GRACE_PERIOD));
 }
 
 #[test]
