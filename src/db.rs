@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use rusqlite::{params, Connection, Result};
+use std::path::PathBuf;
 
 use shooting_game::entities::Level;
 
 fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".shooting_game.db")
+    PathBuf::from("shooting_game.db")
 }
 
 fn level_str(level: &Level) -> &'static str {
