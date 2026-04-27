@@ -394,10 +394,8 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
                     }
                 }
 
-                if state.score > level_high {
-                    if let Some(ref conn) = db_conn {
-                        let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
-                    }
+                if let Some(ref conn) = db_conn {
+                    let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
                 }
 
                 if state.score > high_score {
