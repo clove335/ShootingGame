@@ -80,16 +80,6 @@ The in-game HUD shows the top score for the current difficulty.
 - **Single tap** — moves exactly 1 step; press fires immediately, then stops
 - **Hold** — 1 step on press, ~167 ms pause, then continuous movement at ~10 cols/sec
 
-### Debug mode (developer only)
-
-| Key | Condition | Action |
-|-----|-----------|--------|
-| `` ` `` | Any | Toggle debug overlay (frame, position, entity counts, power-up, flags) |
-| `G` | Debug on | Toggle god mode (invincibility) |
-| `S` | Debug on | Toggle slow-motion (~7.5 FPS) |
-
-Collision boxes are drawn around the player (cyan) and enemies (red) when the overlay is on.
-
 
 ## Installation
 
@@ -108,7 +98,7 @@ xcode-select --install
 sudo pacman -S base-devel
 
 # Fedora / RHEL
-sudo dnf install gcc
+sudo dnf groupinstall "Development Tools"
 ```
 
 ### Build & run
@@ -119,7 +109,7 @@ $ cd ShootingGame/
 
 # Install Rust if not already present
 $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-$ source ~/.bashrc
+$ source "$HOME/.cargo/env"
 
 $ cargo build
 $ cargo run
