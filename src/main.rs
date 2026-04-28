@@ -381,11 +381,11 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
         match show_menu(out, rx, high_score)? {
             MenuResult::Quit => break,
             MenuResult::Start(level) => {
-                let level_high = db_conn
+                let difficulty_best = db_conn
                     .as_ref()
                     .map_or(0, |c| db::load_top_score(c, &level));
                 let (width, height) = terminal::size()?;
-                let mut state = init_state(level, width, height, level_high);
+                let mut state = init_state(level, width, height, difficulty_best);
                 let quit = game_loop(out, &mut state, rx)?;
 
                 if state.status == GameStatus::GameOver {
@@ -394,10 +394,8 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
                     }
                 }
 
-                if state.score > level_high {
-                    if let Some(ref conn) = db_conn {
-                        let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
-                    }
+                if let Some(ref conn) = db_conn {
+                    let _ = db::upsert_top_score(conn, &username, &state.level, state.score);
                 }
 
                 if state.score > high_score {
