@@ -22,6 +22,8 @@ fn make_state() -> EntireGameStateInfo {
         frame: 0,
         width: 40,
         height: 20,
+        muzzle_flash: 0,
+        cheer_msg: None,
     }
 }
 

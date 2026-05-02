@@ -100,6 +100,10 @@ pub fn render<W: Write>(
     }
     draw_player(out, state)?;
 
+    if let Some((msg, _)) = &state.cheer_msg {
+        draw_cheer(out, state, msg)?;
+    }
+
     if state.status == GameStatus::GameOver {
         draw_game_over(out, state)?;
     }
@@ -207,13 +211,26 @@ fn draw_player<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::R
     //   ▲       ← row y      (tip)
     //  /█\      ← row y+1    (fuselage + wings)
     let p = &state.player;
-    out.queue(style::SetForegroundColor(C_PLAYER))?;
+    let flashing = state.muzzle_flash > 0;
 
-    // Tip
+    // Muzzle flash: bright burst one row above the tip
+    if flashing {
+        let flash_y = p.y - 1;
+        if flash_y >= 2 {
+            out.queue(style::SetForegroundColor(Color::Yellow))?;
+            out.queue(cursor::MoveTo(p.x as u16, flash_y as u16))?;
+            out.queue(Print("*"))?;
+        }
+    }
+
+    // Tip — yellow while firing, white otherwise
+    let tip_color = if flashing { Color::Yellow } else { C_PLAYER };
+    out.queue(style::SetForegroundColor(tip_color))?;
     out.queue(cursor::MoveTo(p.x as u16, p.y as u16))?;
     out.queue(Print("▲"))?;
 
     // Fuselage — starting one column left of centre
+    out.queue(style::SetForegroundColor(C_PLAYER))?;
     let wing_y = p.y + 1;
     if wing_y < state.height as i32 - 2 {
         out.queue(cursor::MoveTo((p.x - 1).max(1) as u16, wing_y as u16))?;
@@ -305,6 +322,23 @@ fn draw_controls_hint<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
     out.queue(cursor::MoveTo(1, state.height.saturating_sub(1)))?;
     out.queue(style::SetForegroundColor(C_HINT))?;
     out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
+    Ok(())
+}
+
+// ── Score-milestone cheer ─────────────────────────────────────────────────────
+
+fn draw_cheer<W: Write>(
+    out: &mut W,
+    state: &EntireGameStateInfo,
+    msg: &str,
+) -> std::io::Result<()> {
+    let cx = state.width / 2;
+    // Show in the upper quarter of the play area so it doesn't cover the player.
+    let row = 2u16 + (state.height.saturating_sub(4)) / 4;
+    let col = cx.saturating_sub(msg.chars().count() as u16 / 2);
+    out.queue(cursor::MoveTo(col, row))?;
+    out.queue(style::SetForegroundColor(Color::Cyan))?;
+    out.queue(Print(msg))?;
     Ok(())
 }
 

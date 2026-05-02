@@ -120,6 +120,8 @@ fn make_state(width: u16, height: u16) -> EntireGameStateInfo {
         frame: 0,
         width,
         height,
+        muzzle_flash: 0,
+        cheer_msg: None,
     }
 }
 

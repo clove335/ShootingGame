@@ -36,6 +36,8 @@ fn game_state_clone_is_independent() {
         frame: 0,
         width: 40,
         height: 20,
+        muzzle_flash: 0,
+        cheer_msg: None,
     };
     let mut cloned = original.clone();
 

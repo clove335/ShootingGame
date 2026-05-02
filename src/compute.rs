@@ -47,6 +47,19 @@ const BONUS_MOVE_INTERVAL: u64 = 10;
 const POWER_UP_DURATION: u32 = 300;
 /// Maximum lives the player can hold.
 const MAX_LIVES: u32 = 5;
+/// Frames the muzzle-flash glyph is visible after firing (≈133 ms at 30 FPS).
+const MUZZLE_FLASH_DURATION: u32 = 4;
+/// Frames a score-milestone cheer stays on screen (≈3 seconds at 30 FPS).
+const CHEER_DURATION: u32 = 90;
+
+/// Score thresholds and their cheer messages (must be ascending).
+const SCORE_MILESTONES: &[(u32, &str)] = &[
+    (500, "Nice! Hot streak!"),
+    (1000, "Great! Keep it up!!"),
+    (2000, "Amazing!!"),
+    (5000, "Unstoppable!!!"),
+    (10000, "LEGENDARY!!!"),
+];
 
 // ── Constructors ─────────────────────────────────────────────────────────────
 
@@ -69,6 +82,8 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
         frame: 0,
         width,
         height,
+        muzzle_flash: 0,
+        cheer_msg: None,
     }
 }
 
@@ -146,6 +161,7 @@ pub fn player_shoot(state: &EntireGameStateInfo) -> EntireGameStateInfo {
 
     EntireGameStateInfo {
         bullets,
+        muzzle_flash: MUZZLE_FLASH_DURATION,
         ..state.clone()
     }
 }
@@ -380,6 +396,26 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
     let new_score = state.score + score_gain;
     let new_high_score = state.high_score.max(new_score);
 
+    // ── 12. Tick muzzle flash ─────────────────────────────────────────────────
+    let muzzle_flash = state.muzzle_flash.saturating_sub(1);
+
+    // ── 13. Score milestone cheer ─────────────────────────────────────────────
+    // A new milestone message always overrides the current one.
+    let cheer_msg = SCORE_MILESTONES
+        .iter()
+        .rev()
+        .find(|(threshold, _)| state.score < *threshold && new_score >= *threshold)
+        .map(|(_, msg)| (msg.to_string(), CHEER_DURATION))
+        .or_else(|| {
+            state.cheer_msg.as_ref().and_then(|(msg, frames)| {
+                if *frames > 1 {
+                    Some((msg.clone(), frames - 1))
+                } else {
+                    None
+                }
+            })
+        });
+
     EntireGameStateInfo {
         player,
         enemies,
@@ -390,6 +426,8 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         high_score: new_high_score,
         status,
         frame,
+        muzzle_flash,
+        cheer_msg,
         ..state.clone()
     }
 }
