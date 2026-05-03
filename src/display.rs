@@ -7,8 +7,8 @@
 use std::io::Write;
 
 use crate::entities::{
-    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, GameStatus,
-    Level,
+    BonusItem, BonusKind, Bullet, BulletOwner, Enemy, EnemyKind, EntireGameStateInfo, Explosion,
+    FirebombProj, FlameBullet, GameStatus, Level,
 };
 use crossterm::{
     cursor,
@@ -30,6 +30,23 @@ const C_HINT: Color = Color::DarkGrey;
 const C_BONUS_SPREAD: Color = Color::Yellow;
 const C_BONUS_LIFE: Color = Color::Magenta;
 const C_BONUS_RAPID: Color = Color::Cyan;
+const C_BONUS_FLAME: Color = Color::Rgb {
+    r: 255,
+    g: 128,
+    b: 0,
+};
+const C_BONUS_BOMB: Color = Color::DarkRed;
+const C_FLAME_BULLET: Color = Color::Rgb {
+    r: 255,
+    g: 128,
+    b: 0,
+};
+const C_FIREBOMB: Color = Color::Red;
+const C_EXPLOSION: Color = Color::Rgb {
+    r: 255,
+    g: 200,
+    b: 0,
+};
 const C_POWERUP_ACTIVE: Color = Color::Yellow;
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -96,6 +113,15 @@ pub fn render<W: Write>(
     }
     for bonus in &state.bonus_items {
         draw_bonus_item(out, bonus)?;
+    }
+    for exp in &state.explosions {
+        draw_explosion(out, exp)?;
+    }
+    for fb in &state.flame_bullets {
+        draw_flame_bullet(out, fb)?;
+    }
+    for bomb in &state.firebombs {
+        draw_firebomb(out, bomb)?;
     }
     for bullet in &state.bullets {
         draw_bullet(out, bullet)?;
@@ -184,12 +210,10 @@ fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Resu
     // Active power-up indicator + lives — right side
     // Build the right-side string, right-aligned
     let power_tag = match &state.active_power_up {
-        Some((BonusKind::SpreadShot, frames)) => {
-            format!("[★ SPREAD {:>2}s] ", frames / 30 + 1)
-        }
-        Some((BonusKind::RapidFire, frames)) => {
-            format!("[! RAPID  {:>2}s] ", frames / 30 + 1)
-        }
+        Some((BonusKind::SpreadShot, f)) => format!("[★ SPREAD {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::RapidFire, f)) => format!("[! RAPID  {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::FlameBurst, f)) => format!("[~ FLAME  {:>2}s] ", f / 30 + 1),
+        Some((BonusKind::Firebomb, f)) => format!("[o BOMB   {:>2}s] ", f / 30 + 1),
         _ => String::new(),
     };
     let is_rapid = matches!(&state.active_power_up, Some((BonusKind::RapidFire, _)));
@@ -340,6 +364,62 @@ fn draw_bonus_item<W: Write>(out: &mut W, bonus: &BonusItem) -> std::io::Result<
             out.queue(style::SetForegroundColor(C_BONUS_RAPID))?;
             out.queue(Print("!"))?;
         }
+        BonusKind::FlameBurst => {
+            out.queue(style::SetForegroundColor(C_BONUS_FLAME))?;
+            out.queue(Print("~"))?;
+        }
+        BonusKind::Firebomb => {
+            out.queue(style::SetForegroundColor(C_BONUS_BOMB))?;
+            out.queue(Print("o"))?;
+        }
+    }
+    Ok(())
+}
+
+// ── New weapon draw functions ─────────────────────────────────────────────────
+
+fn draw_flame_bullet<W: Write>(out: &mut W, fb: &FlameBullet) -> std::io::Result<()> {
+    let x = fb.x.round() as u16;
+    let y = fb.y.round() as u16;
+    out.queue(cursor::MoveTo(x, y))?;
+    out.queue(style::SetForegroundColor(C_FLAME_BULLET))?;
+    let ch = if fb.vx <= -0.7 {
+        "╱"
+    } else if fb.vx <= -0.1 {
+        "/"
+    } else if fb.vx < 0.1 {
+        "~"
+    } else if fb.vx < 0.7 {
+        "\\"
+    } else {
+        "╲"
+    };
+    out.queue(Print(ch))?;
+    Ok(())
+}
+
+fn draw_firebomb<W: Write>(out: &mut W, bomb: &FirebombProj) -> std::io::Result<()> {
+    out.queue(cursor::MoveTo(bomb.x as u16, bomb.y as u16))?;
+    let ch = if bomb.fuse % 6 < 3 { "●" } else { "○" };
+    out.queue(style::SetForegroundColor(C_FIREBOMB))?;
+    out.queue(Print(ch))?;
+    Ok(())
+}
+
+fn draw_explosion<W: Write>(out: &mut W, exp: &Explosion) -> std::io::Result<()> {
+    const R: i32 = 3;
+    out.queue(style::SetForegroundColor(C_EXPLOSION))?;
+    for dy in -R..=R {
+        for dx in -R..=R {
+            if dx * dx + dy * dy <= R * R {
+                let px = exp.x + dx;
+                let py = exp.y + dy;
+                if px > 0 && py > 1 {
+                    out.queue(cursor::MoveTo(px as u16, py as u16))?;
+                    out.queue(Print("*"))?;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -382,6 +462,8 @@ fn draw_debug_overlay<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
     let pu = match &state.active_power_up {
         Some((BonusKind::SpreadShot, f)) => format!("Spread({}f)", f),
         Some((BonusKind::RapidFire, f)) => format!("Rapid({}f)", f),
+        Some((BonusKind::FlameBurst, f)) => format!("Flame({}f)", f),
+        Some((BonusKind::Firebomb, f)) => format!("Bomb({}f)", f),
         Some((BonusKind::ExtraLife, _)) => "ExtraLife".to_string(),
         None => "-".to_string(),
     };

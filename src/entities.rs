@@ -24,12 +24,19 @@ pub enum GameStatus {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BonusKind {
-    /// Fires a 3-way spread shot for a limited time
+    /// 3-way spread shot (straight up) for POWER_UP_DURATION frames.
     SpreadShot,
-    /// Instantly adds one life (max 5)
+    /// Instantly adds one life (max 5).
     ExtraLife,
-    /// Raises the on-screen bullet cap to 6 for a limited time
+    /// Raises the on-screen bullet cap to 6 for POWER_UP_DURATION frames.
     RapidFire,
+    /// 4-way angled flame burst for POWER_UP_DURATION frames.
+    /// Each flame fires at ±18° and ±54° from vertical (36° apart).
+    FlameBurst,
+    /// Slow-moving firebomb for POWER_UP_DURATION frames.
+    /// Explodes on enemy contact or when it reaches the top, damaging
+    /// every enemy within EXPLOSION_RADIUS cells.
+    Firebomb,
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +44,35 @@ pub struct BonusItem {
     pub x: i32,
     pub y: i32,
     pub kind: BonusKind,
+}
+
+/// A player bullet that travels diagonally (used by the FlameBurst power-up).
+/// Positions are stored as floats so sub-column angles stay smooth.
+#[derive(Clone, Debug)]
+pub struct FlameBullet {
+    pub x: f32,
+    pub y: f32,
+    /// Horizontal velocity added each frame (positive = rightward).
+    /// Vertical velocity is always −1.0 (one row upward per frame).
+    pub vx: f32,
+}
+
+/// A slow-moving explosive projectile (used by the Firebomb power-up).
+#[derive(Clone, Debug)]
+pub struct FirebombProj {
+    pub x: i32,
+    pub y: i32,
+    /// Frames until automatic detonation even without hitting anything.
+    pub fuse: u32,
+}
+
+/// A brief visual explosion rendered for a few frames after a firebomb detonates.
+#[derive(Clone, Debug)]
+pub struct Explosion {
+    pub x: i32,
+    pub y: i32,
+    /// Remaining frames to display.
+    pub frames: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -72,7 +108,14 @@ pub struct Bullet {
 pub struct EntireGameStateInfo {
     pub player: Player,
     pub enemies: Vec<Enemy>,
+    /// Standard (straight-moving) bullets from player and enemies.
     pub bullets: Vec<Bullet>,
+    /// Diagonally-moving flame bullets fired during FlameBurst.
+    pub flame_bullets: Vec<FlameBullet>,
+    /// Slow firebomb projectiles fired during the Firebomb power-up.
+    pub firebombs: Vec<FirebombProj>,
+    /// Short-lived explosion visuals after a firebomb detonates.
+    pub explosions: Vec<Explosion>,
     /// Bonus power-up items currently falling through the play area.
     pub bonus_items: Vec<BonusItem>,
     /// Active power-up and the number of frames remaining, if any.
