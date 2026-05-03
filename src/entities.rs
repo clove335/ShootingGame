@@ -89,4 +89,8 @@ pub struct EntireGameStateInfo {
     pub debug_mode: bool,
     pub god_mode: bool,
     pub slow_mo: bool,
+    /// Frames remaining for the muzzle-flash effect after the player fires.
+    pub muzzle_flash: u32,
+    /// Active cheer message (milestone reached) and frames remaining.
+    pub cheer_msg: Option<(String, u32)>,
 }

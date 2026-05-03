@@ -25,6 +25,8 @@ fn make_state() -> EntireGameStateInfo {
         debug_mode: false,
         god_mode: false,
         slow_mo: false,
+        muzzle_flash: 0,
+        cheer_msg: None,
     }
 }
 
