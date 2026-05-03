@@ -67,12 +67,14 @@ flowchart TD
     menu -->|"Q / Esc"| quit([exit])
     menu -->|"1-4 select level"| load_hs["load_top_score(level)"]
     load_hs --> init["init_state(level, w, h, difficulty_best)"]
-    init --> game_loop["game_loop()"]
-    game_loop -->|"Q pressed"| save_scores
-    game_loop -->|"GameOver"| save_scores["upsert_top_score()\ninsert_score() if GameOver"]
-    game_loop -->|"R pressed (GameOver)"| menu
-    save_scores --> menu
+    init --> game_loop["game_loop()\nreturns quit: bool"]
+    game_loop --> save_scores["upsert_top_score() — always\ninsert_score() — only if GameOver"]
+    save_scores --> check_quit{"quit == true?"}
+    check_quit -->|"yes (Q pressed)"| quit2([exit])
+    check_quit -->|"no (GameOver or R pressed)"| menu
 ```
+
+`game_loop` returns `true` when Q is pressed (exit program) and `false` when R is pressed on GameOver (return to menu). Either way `upsert_top_score` is called unconditionally in `run()` after `game_loop` returns. `insert_score` is only called when `state.status == GameStatus::GameOver`.
 
 ---
 
@@ -82,14 +84,16 @@ flowchart TD
 flowchart LR
     A([frame start]) --> B["drain rx.try_recv()\nall pending KeyEvents"]
     B --> C{"key kind?"}
-    C -->|"Press/Repeat"| D["update key_frame map\none-shot: Space → player_shoot\ntoggle: \` / G / S / R / Q"]
+    C -->|"Press/Repeat"| D["update key_frame map\none-shot: Space → player_shoot\nquit: Q · return-to-menu: R (GameOver only)\ntoggle: \` (debug) · G (god) · S (slow-mo)"]
     C -->|"Release"| E["defer to deferred_releases\n(processed after all Press/Repeat)"]
     D --> F["apply deferred releases\nupdate release_frame map"]
     E --> F
-    F --> G["is_held() × 2 directions\n→ move_player if cooldown=0"]
-    G --> H["tick(state, rng)\n→ new state"]
-    H --> I["render(out, state, full_redraw)"]
-    I --> J["sleep(33ms − elapsed)\nor 133ms if slow_mo"]
+    F --> G["is_held() × 2 directions\n→ move_player if cooldown=0\n(guard: status == Playing)"]
+    G --> H{"status ==\nPlaying?"}
+    H -->|"yes"| tick_node["tick(state, rng)\n→ new state"]
+    H -->|"no (GameOver)"| I
+    tick_node --> I["render(out, state, full_redraw)"]
+    I --> J["sleep(33ms − elapsed)\nor 132ms if slow_mo"]
     J --> A
 ```
 
@@ -216,7 +220,7 @@ flowchart TD
     s3 --> s4["4 · Enemies randomly shoot\n1/220 chance per enemy per frame"]
     s4 --> s5["5 · Collide: player bullets ↔ enemies\n3-wide × 2-tall AABB\nscore += 100 (Spacecraft) / 150 (Octopus)"]
     s5 --> s6["6 · Collide: flame bullets ↔ enemies\nsame AABB · float rounded to int"]
-    s6 --> s7["7 · Collide: enemy bullets ↔ player\n3-wide × 2-tall AABB\nenemy reaching player row also counts\nskipped when god_mode = true"]
+    s6 --> s7["7 · Collide: enemy bullets ↔ player\n3-wide × 2-tall AABB\nenemy reaching player row also counts\ndetection always runs; damage skipped when god_mode = true"]
     s7 --> s8["8 · Move firebombs\ny−1 every FIREBOMB_MOVE_INTERVAL=4 frames\nfuse−=1 each frame\ndetonate on: fuse=0 · y≤2 · dist²≤4 from enemy"]
     s8 --> s9["9 · Tick explosions\nframes−=1 · remove at 0\nadd new Explosion per detonation point"]
     s9 --> s10["10 · Move bonus items\ny+1 every BONUS_MOVE_INTERVAL=10 frames\ndiscard at bottom"]
@@ -388,12 +392,12 @@ Collision in `tick()` uses integer AABB: `|bx − ex| ≤ 1 && (by == ey || by =
 | Constant | Value | Meaning |
 |---|---|---|
 | `FRAME` | 33 ms | Target frame duration (≈30 FPS) |
-| `MOVE_COOLDOWN` | 0.1 | Minimum frames between held-key moves (effectively every 3rd frame) |
+| `MOVE_COOLDOWN` | 0.1 | Cooldown set after each held move; decremented by 1.0/frame so it reaches 0 the same frame it's set — effectively no cooldown (moves every frame) |
 | `POWER_UP_DURATION` | 300 frames | ≈10 s for all timed power-ups |
 | `BONUS_SPAWN_INTERVAL` | 150 frames | ≈5 s between bonus drops |
 | `BONUS_MOVE_INTERVAL` | 10 frames | Bonus falls 1 row every 10 frames |
 | `MAX_LIVES` | 5 | Player lives cap |
-| `MUZZLE_FLASH_DURATION` | 4 frames | ≈133 ms yellow burst at player tip |
+| `MUZZLE_FLASH_DURATION` | 4 frames | ≈132 ms yellow burst at player tip |
 | `CHEER_DURATION` | 90 frames | ≈3 s score-milestone banner |
 | `FLAME_VX_NEAR` | 0.3249 | tan(18°) — inner FlameBurst angle |
 | `FLAME_VX_FAR` | 1.3764 | tan(54°) — outer FlameBurst angle |
