@@ -27,6 +27,9 @@ fn game_state_clone_is_independent() {
         },
         enemies: Vec::new(),
         bullets: Vec::new(),
+        flame_bullets: Vec::new(),
+        firebombs: Vec::new(),
+        explosions: Vec::new(),
         bonus_items: Vec::new(),
         active_power_up: None,
         score: 0,
@@ -39,6 +42,8 @@ fn game_state_clone_is_independent() {
         debug_mode: false,
         god_mode: false,
         slow_mo: false,
+        muzzle_flash: 0,
+        cheer_msg: None,
     };
     let mut cloned = original.clone();
 

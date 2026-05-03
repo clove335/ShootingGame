@@ -111,6 +111,9 @@ fn make_state(width: u16, height: u16) -> EntireGameStateInfo {
         },
         enemies: vec![],
         bullets: vec![],
+        flame_bullets: vec![],
+        firebombs: vec![],
+        explosions: vec![],
         bonus_items: vec![],
         active_power_up: None,
         score: 0,
@@ -123,6 +126,8 @@ fn make_state(width: u16, height: u16) -> EntireGameStateInfo {
         debug_mode: false,
         god_mode: false,
         slow_mo: false,
+        muzzle_flash: 0,
+        cheer_msg: None,
     }
 }
 
