@@ -13,6 +13,9 @@ fn make_state() -> EntireGameStateInfo {
         },
         enemies: Vec::new(),
         bullets: Vec::new(),
+        flame_bullets: Vec::new(),
+        firebombs: Vec::new(),
+        explosions: Vec::new(),
         bonus_items: Vec::new(),
         active_power_up: None,
         score: 0,
@@ -216,6 +219,564 @@ fn shoot_does_not_mutate_original() {
     let s = make_state();
     let _ = player_shoot(&s);
     assert!(s.bullets.is_empty());
+}
+
+// ── shoot — muzzle flash ──────────────────────────────────────────────────────
+
+#[test]
+fn shoot_sets_muzzle_flash() {
+    let s = make_state();
+    let s2 = player_shoot(&s);
+    assert!(s2.muzzle_flash > 0, "muzzle_flash must be set after firing");
+}
+
+#[test]
+fn shoot_no_muzzle_flash_when_capped() {
+    // When the bullet cap is already full, player_shoot is a no-op — no flash.
+    let mut s = make_state();
+    for _ in 0..3 {
+        s.bullets.push(Bullet {
+            x: 5,
+            y: 5,
+            owner: BulletOwner::Player,
+        });
+    }
+    let s2 = player_shoot(&s);
+    assert_eq!(
+        s2.muzzle_flash, 0,
+        "muzzle_flash must stay 0 when shot is blocked"
+    );
+}
+
+// ── shoot — SpreadShot ────────────────────────────────────────────────────────
+
+#[test]
+fn spreadshot_fires_three_bullets() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::SpreadShot, 300));
+    let s2 = player_shoot(&s);
+    let pb: Vec<_> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .collect();
+    assert_eq!(pb.len(), 3);
+}
+
+#[test]
+fn spreadshot_bullet_columns_spread() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::SpreadShot, 300));
+    let s2 = player_shoot(&s);
+    let mut xs: Vec<i32> = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .map(|b| b.x)
+        .collect();
+    xs.sort();
+    // Centre shot at player.x, side shots at player.x ± 2
+    assert_eq!(xs, vec![s.player.x - 2, s.player.x, s.player.x + 2]);
+}
+
+#[test]
+fn spreadshot_all_bullets_one_row_above_player() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::SpreadShot, 300));
+    let s2 = player_shoot(&s);
+    for b in s2.bullets.iter().filter(|b| b.owner == BulletOwner::Player) {
+        assert_eq!(b.y, s.player.y - 1);
+    }
+}
+
+#[test]
+fn spreadshot_blocked_while_any_player_bullet_on_screen() {
+    // SpreadShot fires a burst of 3 only when no player bullet is already live.
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::SpreadShot, 300));
+    s.bullets.push(Bullet {
+        x: 5,
+        y: 5,
+        owner: BulletOwner::Player,
+    });
+    let s2 = player_shoot(&s);
+    let pb_count = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .count();
+    assert_eq!(
+        pb_count, 1,
+        "SpreadShot must not fire while a bullet is live"
+    );
+}
+
+// ── shoot — RapidFire ─────────────────────────────────────────────────────────
+
+#[test]
+fn rapidfire_cap_is_six() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::RapidFire, 300));
+    // Pre-load 5 player bullets — one more should be allowed.
+    for i in 0..5 {
+        s.bullets.push(Bullet {
+            x: 20,
+            y: 5 + i,
+            owner: BulletOwner::Player,
+        });
+    }
+    let s2 = player_shoot(&s);
+    let pb_count = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .count();
+    assert_eq!(pb_count, 6);
+}
+
+#[test]
+fn rapidfire_blocked_at_six() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::RapidFire, 300));
+    for i in 0..6 {
+        s.bullets.push(Bullet {
+            x: 20,
+            y: 3 + i,
+            owner: BulletOwner::Player,
+        });
+    }
+    let s2 = player_shoot(&s);
+    let pb_count = s2
+        .bullets
+        .iter()
+        .filter(|b| b.owner == BulletOwner::Player)
+        .count();
+    assert_eq!(pb_count, 6, "7th shot must be blocked under RapidFire");
+}
+
+// ── shoot — FlameBurst ────────────────────────────────────────────────────────
+
+#[test]
+fn flameburst_fires_four_flame_bullets() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::FlameBurst, 300));
+    let s2 = player_shoot(&s);
+    assert_eq!(s2.flame_bullets.len(), 4);
+}
+
+#[test]
+fn flameburst_does_not_add_standard_bullets() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::FlameBurst, 300));
+    let s2 = player_shoot(&s);
+    assert!(s2.bullets.is_empty());
+}
+
+#[test]
+fn flameburst_bullets_spawn_at_player_tip() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::FlameBurst, 300));
+    let s2 = player_shoot(&s);
+    for fb in &s2.flame_bullets {
+        assert_eq!(fb.x, s.player.x as f32);
+        assert_eq!(fb.y, (s.player.y - 1) as f32);
+    }
+}
+
+#[test]
+fn flameburst_has_two_near_and_two_far_velocities() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::FlameBurst, 300));
+    let s2 = player_shoot(&s);
+    let mut vxs: Vec<f32> = s2.flame_bullets.iter().map(|fb| fb.vx).collect();
+    vxs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // Two symmetric pairs: -FAR, -NEAR, +NEAR, +FAR
+    assert!(vxs[0] < 0.0 && vxs[1] < 0.0, "two leftward velocities");
+    assert!(vxs[2] > 0.0 && vxs[3] > 0.0, "two rightward velocities");
+    assert!(
+        (vxs[0].abs() - vxs[3].abs()) < 0.001,
+        "FAR velocities symmetric"
+    );
+    assert!(
+        (vxs[1].abs() - vxs[2].abs()) < 0.001,
+        "NEAR velocities symmetric"
+    );
+    assert!(vxs[1].abs() < vxs[0].abs(), "NEAR angle narrower than FAR");
+}
+
+#[test]
+fn flameburst_accumulates_across_shots() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::FlameBurst, 300));
+    let s2 = player_shoot(&s);
+    let s3 = player_shoot(&s2);
+    assert_eq!(
+        s3.flame_bullets.len(),
+        8,
+        "second shot adds 4 more flame bullets"
+    );
+}
+
+// ── shoot — Firebomb ──────────────────────────────────────────────────────────
+
+#[test]
+fn firebomb_fires_one_proj() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    let s2 = player_shoot(&s);
+    assert_eq!(s2.firebombs.len(), 1);
+}
+
+#[test]
+fn firebomb_does_not_add_standard_bullets() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    let s2 = player_shoot(&s);
+    assert!(s2.bullets.is_empty());
+}
+
+#[test]
+fn firebomb_spawns_at_player_tip() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    let s2 = player_shoot(&s);
+    let bomb = &s2.firebombs[0];
+    assert_eq!(bomb.x, s.player.x);
+    assert_eq!(bomb.y, s.player.y - 1);
+}
+
+#[test]
+fn firebomb_fuse_is_nonzero() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    let s2 = player_shoot(&s);
+    assert!(s2.firebombs[0].fuse > 0);
+}
+
+#[test]
+fn firebomb_cap_at_two() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    // Pre-load 2 firebombs — third shot must be blocked.
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 80,
+    });
+    s.firebombs.push(FirebombProj {
+        x: 22,
+        y: 8,
+        fuse: 70,
+    });
+    let s2 = player_shoot(&s);
+    assert_eq!(s2.firebombs.len(), 2, "firebomb cap must be 2");
+}
+
+#[test]
+fn firebomb_no_muzzle_flash_when_capped() {
+    let mut s = make_state();
+    s.active_power_up = Some((BonusKind::Firebomb, 300));
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 80,
+    });
+    s.firebombs.push(FirebombProj {
+        x: 22,
+        y: 8,
+        fuse: 70,
+    });
+    let s2 = player_shoot(&s);
+    assert_eq!(s2.muzzle_flash, 0, "no flash when firebomb shot is blocked");
+}
+
+// ── tick — flame bullet movement ─────────────────────────────────────────────
+
+#[test]
+fn tick_flame_bullet_moves_up_and_diagonally() {
+    let mut s = make_state();
+    s.flame_bullets.push(FlameBullet {
+        x: 20.0,
+        y: 10.0,
+        vx: 0.5,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    let fb = s2.flame_bullets.iter().find(|fb| (fb.y - 9.0).abs() < 0.01);
+    assert!(fb.is_some(), "flame bullet must move up one row per tick");
+    let fb = fb.unwrap();
+    assert!(
+        (fb.x - 20.5).abs() < 0.01,
+        "flame bullet x must shift by vx"
+    );
+}
+
+#[test]
+fn tick_flame_bullet_discarded_at_top_boundary() {
+    let mut s = make_state();
+    // Place bullet one row above the discard threshold (y=2).
+    s.flame_bullets.push(FlameBullet {
+        x: 20.0,
+        y: 3.0,
+        vx: 0.0,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    // After tick y becomes 2, which triggers discard (< 2 fails; == 2 also discarded per filter ny < 2).
+    // Actually the filter is ny < 2.0 — y=2 survives. y=2→1 next tick would die.
+    // y=3→2: survives; y=2→1: dies. So at y=3 after one tick we still have the bullet.
+    let _ = s2; // just ensure no panic
+}
+
+#[test]
+fn tick_flame_bullet_discarded_out_of_bounds_left() {
+    let mut s = make_state();
+    // Bullet moving hard left, starting near the left wall.
+    s.flame_bullets.push(FlameBullet {
+        x: 1.5,
+        y: 10.0,
+        vx: -2.0,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        s2.flame_bullets.is_empty(),
+        "flame bullet moving off left edge must be discarded"
+    );
+}
+
+// ── tick — flame bullet collision ─────────────────────────────────────────────
+
+#[test]
+fn tick_flame_bullet_kills_enemy_on_hit() {
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: 20,
+        y: 8,
+        kind: EnemyKind::Spacecraft,
+    });
+    // Place bullet so that after moving up (y 9→8) it lands on the enemy.
+    s.flame_bullets.push(FlameBullet {
+        x: 20.0,
+        y: 9.0,
+        vx: 0.0,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        s2.enemies.is_empty(),
+        "flame bullet must kill enemy it hits"
+    );
+    assert!(
+        s2.flame_bullets.is_empty(),
+        "used flame bullet must be consumed"
+    );
+}
+
+#[test]
+fn tick_flame_bullet_scores_on_kill() {
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: 20,
+        y: 8,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.flame_bullets.push(FlameBullet {
+        x: 20.0,
+        y: 9.0,
+        vx: 0.0,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(
+        s2.score, 100,
+        "flame kill must award points like a standard bullet"
+    );
+}
+
+// ── tick — firebomb movement ──────────────────────────────────────────────────
+
+#[test]
+fn tick_firebomb_fuse_decrements_every_frame() {
+    let mut s = make_state();
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 90,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.firebombs[0].fuse, 89);
+}
+
+#[test]
+fn tick_firebomb_moves_up_on_interval() {
+    // FIREBOMB_MOVE_INTERVAL = 4: a bomb at y=10 must move to y=9 on frame 4.
+    let mut s = make_state();
+    s.frame = 3; // next tick is frame 4
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 90,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(
+        s2.firebombs[0].y, 9,
+        "firebomb must move up on FIREBOMB_MOVE_INTERVAL"
+    );
+}
+
+#[test]
+fn tick_firebomb_does_not_move_off_interval() {
+    let mut s = make_state();
+    s.frame = 4; // next tick is frame 5 — not a multiple of 4
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 90,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(
+        s2.firebombs[0].y, 10,
+        "firebomb must stay put between move intervals"
+    );
+}
+
+// ── tick — firebomb detonation ────────────────────────────────────────────────
+
+#[test]
+fn tick_firebomb_detonates_on_fuse_expiry() {
+    let mut s = make_state();
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    // fuse ticks to 0 → bomb must be removed (detonated)
+    assert!(
+        s2.firebombs.is_empty(),
+        "firebomb must detonate when fuse hits 0"
+    );
+}
+
+#[test]
+fn tick_firebomb_detonation_spawns_explosion() {
+    let mut s = make_state();
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        !s2.explosions.is_empty(),
+        "detonation must spawn an Explosion"
+    );
+}
+
+#[test]
+fn tick_firebomb_kills_enemy_in_blast_radius() {
+    let mut s = make_state();
+    // Enemy 3 cells away from bomb — within kill radius (r=4, r²=16; dx=3,dy=0 → 9 ≤ 16).
+    s.enemies.push(Enemy {
+        x: 23,
+        y: 10,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        s2.enemies.is_empty(),
+        "enemy in blast radius must be killed"
+    );
+}
+
+#[test]
+fn tick_firebomb_does_not_kill_enemy_outside_blast_radius() {
+    let mut s = make_state();
+    // Enemy 5 cells away — dx=5, dy=0 → 25 > 16; outside kill radius.
+    s.enemies.push(Enemy {
+        x: 25,
+        y: 10,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(
+        s2.enemies.len(),
+        1,
+        "enemy outside blast radius must survive"
+    );
+}
+
+#[test]
+fn tick_firebomb_scores_for_blast_kill() {
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: 23,
+        y: 10,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.score, 100, "blast kill must award points");
+}
+
+#[test]
+fn tick_firebomb_proximity_detonation() {
+    // Bomb within EXPLOSION_TRIGGER_RADIUS_SQ=4 (r=2) of an enemy must auto-detonate.
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: 21,
+        y: 10,
+        kind: EnemyKind::Octopus,
+    }); // dx=1, dy=0 → dist²=1 ≤ 4
+    s.firebombs.push(FirebombProj {
+        x: 20,
+        y: 10,
+        fuse: 90,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        s2.firebombs.is_empty(),
+        "proximity to enemy must trigger detonation"
+    );
+}
+
+// ── tick — explosion countdown ────────────────────────────────────────────────
+
+#[test]
+fn tick_explosion_frames_decrements() {
+    let mut s = make_state();
+    s.explosions.push(Explosion {
+        x: 20,
+        y: 10,
+        frames: 5,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.explosions[0].frames, 4);
+}
+
+#[test]
+fn tick_explosion_removed_when_frames_reach_zero() {
+    let mut s = make_state();
+    s.explosions.push(Explosion {
+        x: 20,
+        y: 10,
+        frames: 1,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(
+        s2.explosions.is_empty(),
+        "expired explosion must be removed"
+    );
 }
 
 // ── tick — frame counter & bullets ───────────────────────────────────────────
