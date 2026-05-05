@@ -261,6 +261,46 @@ fn game_loop<W: Write>(
                             }
                             key_frame.insert(code, frame);
                         }
+                        // W: instant warp 10 steps on keydown (if direction held).
+                        KeyCode::Char('w') | KeyCode::Char('W')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
+                            let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+                            if left {
+                                *state = move_player_left_n(state, 10);
+                                left_has_repeat = true;
+                                warp_cooldown = WARP_COOLDOWN;
+                            } else if right {
+                                *state = move_player_right_n(state, 10);
+                                right_has_repeat = true;
+                                warp_cooldown = WARP_COOLDOWN;
+                            }
+                            key_frame.insert(code, frame);
+                        }
+                        // F: instant 2-step move on keydown (if direction held).
+                        KeyCode::Char('f') | KeyCode::Char('F')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
+                            let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+                            if left {
+                                *state = move_player_left_n(state, 2);
+                                left_has_repeat = true;
+                            } else if right {
+                                *state = move_player_right_n(state, 2);
+                                right_has_repeat = true;
+                            }
+                            key_frame.insert(code, frame);
+                        }
                         // Backtick: toggle debug overlay.
                         KeyCode::Char('`') => {
                             state.debug_mode = !state.debug_mode;
