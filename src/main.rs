@@ -281,10 +281,12 @@ fn game_loop<W: Write>(
                             if dir_left {
                                 *state = move_player_left_n(state, 10);
                                 left_has_repeat = true;
+                                right_has_repeat = false;
                                 warp_cooldown = WARP_COOLDOWN;
                             } else if dir_right {
                                 *state = move_player_right_n(state, 10);
                                 right_has_repeat = true;
+                                left_has_repeat = false;
                                 warp_cooldown = WARP_COOLDOWN;
                             }
                             key_frame.insert(code, frame);
@@ -304,9 +306,11 @@ fn game_loop<W: Write>(
                             if dir_left {
                                 *state = move_player_left_n(state, 2);
                                 left_has_repeat = true;
+                                right_has_repeat = false;
                             } else if dir_right {
                                 *state = move_player_right_n(state, 2);
                                 right_has_repeat = true;
+                                left_has_repeat = false;
                             }
                             key_frame.insert(code, frame);
                         }
@@ -395,19 +399,23 @@ fn game_loop<W: Write>(
                 if dir_left {
                     *state = move_player_left_n(state, 10);
                     left_has_repeat = true;
+                    right_has_repeat = false;
                     warp_cooldown = WARP_COOLDOWN;
                 } else if dir_right {
                     *state = move_player_right_n(state, 10);
                     right_has_repeat = true;
+                    left_has_repeat = false;
                     warp_cooldown = WARP_COOLDOWN;
                 }
             } else if fast {
                 if dir_left {
                     *state = move_player_left_n(state, 2);
                     left_has_repeat = true;
+                    right_has_repeat = false;
                 } else if dir_right {
                     *state = move_player_right_n(state, 2);
                     right_has_repeat = true;
+                    left_has_repeat = false;
                 }
             } else if move_cooldown <= 0.0 {
                 if left_has_repeat {
