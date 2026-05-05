@@ -265,17 +265,22 @@ fn game_loop<W: Write>(
                         KeyCode::Char('w') | KeyCode::Char('W')
                             if state.status == GameStatus::Playing =>
                         {
-                            let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                            // Use left_has_repeat as fallback: when F/W is pressed the
+                            // terminal may stop sending Repeat for direction keys, making
+                            // is_held() expire before the key is actually released.
+                            let dir_left = left_has_repeat
+                                || is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
-                            let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                            let dir_right = right_has_repeat
+                                || is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
-                            if left {
+                            if dir_left {
                                 *state = move_player_left_n(state, 10);
                                 left_has_repeat = true;
                                 warp_cooldown = WARP_COOLDOWN;
-                            } else if right {
+                            } else if dir_right {
                                 *state = move_player_right_n(state, 10);
                                 right_has_repeat = true;
                                 warp_cooldown = WARP_COOLDOWN;
@@ -286,16 +291,18 @@ fn game_loop<W: Write>(
                         KeyCode::Char('f') | KeyCode::Char('F')
                             if state.status == GameStatus::Playing =>
                         {
-                            let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                            let dir_left = left_has_repeat
+                                || is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
-                            let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                            let dir_right = right_has_repeat
+                                || is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
                                 || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
-                            if left {
+                            if dir_left {
                                 *state = move_player_left_n(state, 2);
                                 left_has_repeat = true;
-                            } else if right {
+                            } else if dir_right {
                                 *state = move_player_right_n(state, 2);
                                 right_has_repeat = true;
                             }
@@ -375,33 +382,36 @@ fn game_loop<W: Write>(
             let warp = is_held(&key_frame, &release_frame, &KeyCode::Char('w'), frame)
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('W'), frame);
 
+            // left_has_repeat / right_has_repeat are the authoritative "direction held"
+            // signals: set on Repeat events, cleared only on Release. is_held() alone is
+            // unreliable here because terminals stop sending direction-key Repeat events
+            // while F or W is also held (OS repeats only the most recently pressed key).
+            let dir_left = left || left_has_repeat;
+            let dir_right = right || right_has_repeat;
+
             if warp && warp_cooldown <= 0.0 {
-                // Warp: 10 steps on first hold, then every WARP_COOLDOWN frames.
-                // Setting has_repeat ensures direction continues on W release.
-                if left {
+                if dir_left {
                     *state = move_player_left_n(state, 10);
                     left_has_repeat = true;
                     warp_cooldown = WARP_COOLDOWN;
-                } else if right {
+                } else if dir_right {
                     *state = move_player_right_n(state, 10);
                     right_has_repeat = true;
                     warp_cooldown = WARP_COOLDOWN;
                 }
             } else if fast {
-                // Fast: 2 steps per frame, no repeat wait.
-                // Setting has_repeat ensures direction continues on F release.
-                if left {
+                if dir_left {
                     *state = move_player_left_n(state, 2);
                     left_has_repeat = true;
-                } else if right {
+                } else if dir_right {
                     *state = move_player_right_n(state, 2);
                     right_has_repeat = true;
                 }
             } else if move_cooldown <= 0.0 {
-                if left && left_has_repeat {
+                if left_has_repeat {
                     *state = move_player_left(state);
                     move_cooldown = MOVE_COOLDOWN;
-                } else if right && right_has_repeat {
+                } else if right_has_repeat {
                     *state = move_player_right(state);
                     move_cooldown = MOVE_COOLDOWN;
                 }
