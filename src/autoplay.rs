@@ -42,6 +42,7 @@ pub fn update_autoplay(state: &EntireGameStateInfo) -> EntireGameStateInfo {
         .enemies
         .iter()
         .any(|e| (e.x - state.player.x).abs() <= 2);
+    #[allow(clippy::manual_is_multiple_of)]
     let should_shoot = enemy_in_front || state.frame % 5 == 0;
 
     if should_shoot {
