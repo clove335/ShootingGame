@@ -403,16 +403,27 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         }
     }
 
-    // Enemy reaching the player's row also counts as a hit
-    if enemies.iter().any(|e| e.y >= state.player.y) {
-        player_hit = true;
-    }
-
     let bullets: Vec<Bullet> = bullets
         .iter()
         .enumerate()
         .filter(|(i, _)| !used_bullets2.contains(i))
         .map(|(_, b)| b.clone())
+        .collect();
+
+    // Enemies that reach the player's row crash into the player (1 life lost)
+    // and are removed from the field — no per-frame repeated damage.
+    let mut contact_indices: Vec<usize> = Vec::new();
+    for (i, e) in enemies.iter().enumerate() {
+        if e.y >= state.player.y {
+            player_hit = true;
+            contact_indices.push(i);
+        }
+    }
+    let enemies: Vec<Enemy> = enemies
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !contact_indices.contains(i))
+        .map(|(_, e)| e)
         .collect();
 
     // Remove enemies that have gone past the bottom border

@@ -259,9 +259,6 @@ fn draw_hud<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Resu
 // ── Entities ──────────────────────────────────────────────────────────────────
 
 fn draw_player<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
-    // Enhanced sprite (2 rows, 3 cols):
-    //   ▲       ← row y      (tip)
-    //  /█\      ← row y+1    (fuselage + wings)
     let p = &state.player;
     let flashing = state.muzzle_flash > 0;
 
@@ -281,12 +278,19 @@ fn draw_player<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::R
     out.queue(cursor::MoveTo(p.x as u16, p.y as u16))?;
     out.queue(Print("▲"))?;
 
-    // Fuselage — starting one column left of centre
-    out.queue(style::SetForegroundColor(C_PLAYER))?;
+    // Fuselage — draw each column individually so the sprite clips at walls
+    // instead of shifting. At p.x=1 the left "/" is behind the wall and skipped;
+    // at p.x=width-2 the right "\" is skipped. The centre "█" always stays
+    // aligned with the tip.
     let wing_y = p.y + 1;
     if wing_y < state.height as i32 - 2 {
-        out.queue(cursor::MoveTo((p.x - 1).max(1) as u16, wing_y as u16))?;
-        out.queue(Print("/█\\"))?;
+        out.queue(style::SetForegroundColor(C_PLAYER))?;
+        for (ch, cx) in [("/", p.x - 1), ("█", p.x), ("\\", p.x + 1)] {
+            if cx >= 1 && cx < state.width as i32 - 1 {
+                out.queue(cursor::MoveTo(cx as u16, wing_y as u16))?;
+                out.queue(Print(ch))?;
+            }
+        }
     }
 
     Ok(())

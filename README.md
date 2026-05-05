@@ -5,6 +5,7 @@
 - Motivation
 - Gameplay
 - Controls
+- Autonomous Play Mode
 - Installation
 - License
 
@@ -81,6 +82,22 @@ The in-game HUD shows the top score for the current difficulty.
 - **Hold** — 1 step on press, ~167 ms pause, then continuous movement at ~10 cols/sec
 
 
+## Autonomous Play Mode
+
+For testing and demonstration purposes, the game includes an "Autonomous Play" mode.
+
+To run the game with auto-play enabled:
+```bash
+cargo run -- --auto-play
+```
+
+The bot uses simple heuristics to:
+- **Targeting**: Align itself with the lowest enemy or falling power-up on screen.
+- **Dodging**: Automatically move to avoid incoming enemy bullets if they are directly above.
+- **Aggression**: Fire weapons continuously and prioritize targets directly in front.
+- **Persistence**: Automatically restarts the game on "Hard" difficulty after a short delay upon Game Over.
+
+
 ## Installation
 
 ### Prerequisites
@@ -112,7 +129,12 @@ $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 $ source "$HOME/.cargo/env"
 
 $ cargo build
+
+# Normal play
 $ cargo run
+
+# Autonomous Play (Testing mode)
+$ cargo run -- --auto-play
 ```
 
 The game saves scores to `shooting_game.db` in the directory where you run it.
