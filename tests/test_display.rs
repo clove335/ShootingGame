@@ -99,7 +99,7 @@ impl VirtualScreen {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const W: usize = 40;
+const W: usize = 80;
 const H: usize = 20;
 
 fn make_state(width: u16, height: u16) -> EntireGameStateInfo {

@@ -19,7 +19,10 @@ use crossterm::{
 };
 use rand::thread_rng;
 
-use shooting_game::compute::{init_state, move_player_left, move_player_right, player_shoot, tick};
+use shooting_game::compute::{
+    init_state, move_player_left, move_player_left_n, move_player_right, move_player_right_n,
+    player_shoot, tick,
+};
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
 use shooting_game::input_keyboard::is_held;
 
@@ -30,6 +33,8 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 /// Min frames between player movements while a direction key is held.
 /// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
 const MOVE_COOLDOWN: f64 = 0.1;
+/// Frames between warp jumps while W is held (≈3–4 warps/sec at 30 FPS).
+const WARP_COOLDOWN: f64 = 8.0;
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
@@ -126,7 +131,9 @@ fn show_menu<W: Write>(
 
     out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 10))?;
     out.queue(style::SetForegroundColor(Color::DarkGrey))?;
-    out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
+    out.queue(Print(
+        "← → / A D : Move   F+dir : Fast   W+dir : Warp×10   SPACE : Shoot   Q : Quit",
+    ))?;
 
     out.queue(style::ResetColor)?;
     out.flush()?;
@@ -176,6 +183,7 @@ fn game_loop<W: Write>(
     let mut key_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut release_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut move_cooldown: f64 = 0.0;
+    let mut warp_cooldown: f64 = 0.0;
     // True once a Repeat event (or a rapid-fire os-simulated Press) has arrived
     // for each direction since the last genuine Press.  Continuous movement only
     // fires when this is true, so a tap (Press + Release, no Repeat) stays one step.
@@ -322,8 +330,34 @@ fn game_loop<W: Write>(
             let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+            let fast = is_held(&key_frame, &release_frame, &KeyCode::Char('f'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('F'), frame);
+            let warp = is_held(&key_frame, &release_frame, &KeyCode::Char('w'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('W'), frame);
 
-            if move_cooldown <= 0.0 {
+            if warp && warp_cooldown <= 0.0 {
+                // Warp: 10 steps on first hold, then every WARP_COOLDOWN frames.
+                // Setting has_repeat ensures direction continues on W release.
+                if left {
+                    *state = move_player_left_n(state, 10);
+                    left_has_repeat = true;
+                    warp_cooldown = WARP_COOLDOWN;
+                } else if right {
+                    *state = move_player_right_n(state, 10);
+                    right_has_repeat = true;
+                    warp_cooldown = WARP_COOLDOWN;
+                }
+            } else if fast {
+                // Fast: 2 steps per frame, no repeat wait.
+                // Setting has_repeat ensures direction continues on F release.
+                if left {
+                    *state = move_player_left_n(state, 2);
+                    left_has_repeat = true;
+                } else if right {
+                    *state = move_player_right_n(state, 2);
+                    right_has_repeat = true;
+                }
+            } else if move_cooldown <= 0.0 {
                 if left && left_has_repeat {
                     *state = move_player_left(state);
                     move_cooldown = MOVE_COOLDOWN;
@@ -335,6 +369,7 @@ fn game_loop<W: Write>(
         }
 
         move_cooldown = (move_cooldown - 1.0).max(0.0);
+        warp_cooldown = (warp_cooldown - 1.0).max(0.0);
 
         if state.status == GameStatus::Playing {
             *state = tick(state, &mut rng);
