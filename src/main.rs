@@ -244,6 +244,7 @@ fn game_loop<W: Write>(
                             } else {
                                 *state = move_player_left(state);
                                 left_has_repeat = false;
+                                right_has_repeat = false; // cancel opposite direction
                             }
                             key_frame.insert(code, frame);
                         }
@@ -258,6 +259,7 @@ fn game_loop<W: Write>(
                             } else {
                                 *state = move_player_right(state);
                                 right_has_repeat = false;
+                                left_has_repeat = false; // cancel opposite direction
                             }
                             key_frame.insert(code, frame);
                         }
