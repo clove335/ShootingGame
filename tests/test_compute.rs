@@ -1201,3 +1201,44 @@ fn tick_no_spawn_off_interval() {
     let s2 = tick(&s, &mut seeded_rng());
     assert!(s2.enemies.is_empty());
 }
+
+// ── Enemy contact: remove on reach ───────────────────────────────────────────
+
+#[test]
+fn tick_enemy_contact_costs_one_life() {
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: s.player.x,
+        y: s.player.y,
+        kind: EnemyKind::Spacecraft,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2, "one life lost on contact");
+}
+
+#[test]
+fn tick_enemy_contact_removes_enemy() {
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: s.player.x,
+        y: s.player.y,
+        kind: EnemyKind::Spacecraft,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    assert!(s2.enemies.is_empty(), "enemy removed after crashing into player");
+}
+
+#[test]
+fn tick_enemy_contact_no_repeated_damage() {
+    // After the enemy is removed on contact, subsequent ticks deal no further damage.
+    let mut s = make_state();
+    s.enemies.push(Enemy {
+        x: s.player.x,
+        y: s.player.y,
+        kind: EnemyKind::Spacecraft,
+    });
+    let s2 = tick(&s, &mut seeded_rng());
+    let s3 = tick(&s2, &mut seeded_rng());
+    assert_eq!(s2.player.lives, 2, "one life lost");
+    assert_eq!(s3.player.lives, 2, "no further damage next frame");
+}

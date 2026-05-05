@@ -169,6 +169,7 @@ fn game_loop<W: Write>(
     out: &mut W,
     state: &mut EntireGameStateInfo,
     rx: &mpsc::Receiver<Event>,
+    autoplay_enabled: bool,
 ) -> std::io::Result<bool> {
     let mut rng = thread_rng();
 
@@ -303,6 +304,16 @@ fn game_loop<W: Write>(
             release_frame.insert(code, frame);
         }
 
+        // ── Apply Autonomous Play actions ─────────────────────────────────────
+        if autoplay_enabled {
+            if state.status == GameStatus::GameOver {
+                return Ok(false); // auto-restart: run() will loop back
+            }
+            if state.status == GameStatus::Playing {
+                *state = shooting_game::autoplay::update_autoplay(state);
+            }
+        }
+
         // ── Apply held-key actions every frame ────────────────────────────────
         if state.status == GameStatus::Playing {
             let left = is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
@@ -343,6 +354,8 @@ fn game_loop<W: Write>(
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
+    let autoplay_enabled = std::env::args().any(|arg| arg == "--auto-play");
+
     let raw_out = stdout();
     let mut out = BufWriter::new(raw_out);
 
@@ -369,7 +382,7 @@ fn main() -> std::io::Result<()> {
         }
     });
 
-    let result = run(&mut out, &rx);
+    let result = run(&mut out, &rx, autoplay_enabled);
 
     // Always restore the terminal
     if keyboard_enhanced {
@@ -382,13 +395,19 @@ fn main() -> std::io::Result<()> {
     result
 }
 
-fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()> {
+fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>, autoplay_enabled: bool) -> std::io::Result<()> {
     let username = std::env::var("USER").unwrap_or_else(|_| "Player".to_string());
     let db_conn = db::open();
     let mut high_score = db_conn.as_ref().map_or(0, db::load_best_score);
 
     loop {
-        match show_menu(out, rx, high_score)? {
+        let menu_res = if autoplay_enabled {
+            MenuResult::Start(Level::Hard)
+        } else {
+            show_menu(out, rx, high_score)?
+        };
+
+        match menu_res {
             MenuResult::Quit => break,
             MenuResult::Start(level) => {
                 let difficulty_best = db_conn
@@ -396,7 +415,7 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
                     .map_or(0, |c| db::load_top_score(c, &level));
                 let (width, height) = terminal::size()?;
                 let mut state = init_state(level, width, height, difficulty_best);
-                let quit = game_loop(out, &mut state, rx)?;
+                let quit = game_loop(out, &mut state, rx, autoplay_enabled)?;
 
                 if state.status == GameStatus::GameOver {
                     if let Some(ref conn) = db_conn {
@@ -414,6 +433,11 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>) -> std::io::Result<()>
 
                 if quit {
                     break;
+                }
+
+                if autoplay_enabled {
+                    // Small delay before restarting AI play
+                    std::thread::sleep(Duration::from_millis(1500));
                 }
             }
         }
