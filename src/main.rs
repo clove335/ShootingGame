@@ -395,7 +395,11 @@ fn main() -> std::io::Result<()> {
     result
 }
 
-fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>, autoplay_enabled: bool) -> std::io::Result<()> {
+fn run<W: Write>(
+    out: &mut W,
+    rx: &mpsc::Receiver<Event>,
+    autoplay_enabled: bool,
+) -> std::io::Result<()> {
     let username = std::env::var("USER").unwrap_or_else(|_| "Player".to_string());
     let db_conn = db::open();
     let mut high_score = db_conn.as_ref().map_or(0, db::load_best_score);

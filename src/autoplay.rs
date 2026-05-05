@@ -1,5 +1,5 @@
-use crate::entities::{EntireGameStateInfo, BulletOwner};
 use crate::compute::{move_player_left, move_player_right, player_shoot};
+use crate::entities::{BulletOwner, EntireGameStateInfo};
 
 pub fn update_autoplay(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let mut current_state = state.clone();
@@ -22,7 +22,10 @@ pub fn update_autoplay(state: &EntireGameStateInfo) -> EntireGameStateInfo {
 
     // 2. Simple heuristic: Avoid enemy bullets that are directly above.
     let dangerous_bullet = state.bullets.iter().find(|b| {
-        b.owner == BulletOwner::Enemy && (b.x - state.player.x).abs() <= 1 && b.y < state.player.y && b.y > state.player.y - 5
+        b.owner == BulletOwner::Enemy
+            && (b.x - state.player.x).abs() <= 1
+            && b.y < state.player.y
+            && b.y > state.player.y - 5
     });
 
     if let Some(bullet) = dangerous_bullet {
@@ -35,7 +38,10 @@ pub fn update_autoplay(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     }
 
     // 3. Always shoot if an enemy is in front or randomly.
-    let enemy_in_front = state.enemies.iter().any(|e| (e.x - state.player.x).abs() <= 2);
+    let enemy_in_front = state
+        .enemies
+        .iter()
+        .any(|e| (e.x - state.player.x).abs() <= 2);
     let should_shoot = enemy_in_front || state.frame % 5 == 0;
 
     if should_shoot {

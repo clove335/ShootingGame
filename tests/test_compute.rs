@@ -1225,7 +1225,10 @@ fn tick_enemy_contact_removes_enemy() {
         kind: EnemyKind::Spacecraft,
     });
     let s2 = tick(&s, &mut seeded_rng());
-    assert!(s2.enemies.is_empty(), "enemy removed after crashing into player");
+    assert!(
+        s2.enemies.is_empty(),
+        "enemy removed after crashing into player"
+    );
 }
 
 #[test]
