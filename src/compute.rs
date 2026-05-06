@@ -120,7 +120,15 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
 // ── Input-driven state transitions (pure) ───────────────────────────────────
 
 pub fn move_player_left(state: &EntireGameStateInfo) -> EntireGameStateInfo {
-    let new_x = (state.player.x - 1).max(1);
+    move_player_left_n(state, 1)
+}
+
+pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
+    move_player_right_n(state, 1)
+}
+
+pub fn move_player_left_n(state: &EntireGameStateInfo, n: i32) -> EntireGameStateInfo {
+    let new_x = (state.player.x - n).max(1);
     EntireGameStateInfo {
         player: Player {
             x: new_x,
@@ -130,8 +138,8 @@ pub fn move_player_left(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     }
 }
 
-pub fn move_player_right(state: &EntireGameStateInfo) -> EntireGameStateInfo {
-    let new_x = (state.player.x + 1).min(state.width as i32 - 2);
+pub fn move_player_right_n(state: &EntireGameStateInfo, n: i32) -> EntireGameStateInfo {
+    let new_x = (state.player.x + n).min(state.width as i32 - 2);
     EntireGameStateInfo {
         player: Player {
             x: new_x,

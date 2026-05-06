@@ -19,7 +19,10 @@ use crossterm::{
 };
 use rand::thread_rng;
 
-use shooting_game::compute::{init_state, move_player_left, move_player_right, player_shoot, tick};
+use shooting_game::compute::{
+    init_state, move_player_left, move_player_left_n, move_player_right, move_player_right_n,
+    player_shoot, tick,
+};
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
 use shooting_game::input_keyboard::is_held;
 
@@ -30,6 +33,18 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 /// Min frames between player movements while a direction key is held.
 /// 1.0 resets to 0 after one decrement → player moves every frame (30 cols/sec).
 const MOVE_COOLDOWN: f64 = 0.1;
+/// Frames between warp jumps while W is held (≈3–4 warps/sec at 30 FPS).
+const WARP_COOLDOWN: f64 = 8.0;
+
+/// Tracks which direction the player is actively holding.
+/// A single ternary value instead of two independent bools — mutually exclusive
+/// by construction, so setting one side can never leave the other stale.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HeldDir {
+    None,
+    Left,
+    Right,
+}
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
@@ -126,7 +141,9 @@ fn show_menu<W: Write>(
 
     out.queue(cursor::MoveTo(cx.saturating_sub(10), cy + 10))?;
     out.queue(style::SetForegroundColor(Color::DarkGrey))?;
-    out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
+    out.queue(Print(
+        "← → / A D : Move   F+dir : Fast   W+dir : Warp×10   SPACE : Shoot   Q : Quit",
+    ))?;
 
     out.queue(style::ResetColor)?;
     out.flush()?;
@@ -176,11 +193,11 @@ fn game_loop<W: Write>(
     let mut key_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut release_frame: HashMap<KeyCode, u64> = HashMap::new();
     let mut move_cooldown: f64 = 0.0;
-    // True once a Repeat event (or a rapid-fire os-simulated Press) has arrived
-    // for each direction since the last genuine Press.  Continuous movement only
-    // fires when this is true, so a tap (Press + Release, no Repeat) stays one step.
-    let mut left_has_repeat = false;
-    let mut right_has_repeat = false;
+    let mut warp_cooldown: f64 = 0.0;
+    // Tracks which direction is actively held. Set to Left/Right on Repeat events
+    // (or rapid re-Press / F/W warp), cleared to None on Release. Ternary so
+    // opposite-side conflicts are impossible by construction.
+    let mut held_dir = HeldDir::None;
     let mut frame: u64 = 0;
     let mut first_frame = true;
 
@@ -232,10 +249,10 @@ fn game_loop<W: Write>(
                                 .get(&code)
                                 .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
-                                left_has_repeat = true;
+                                held_dir = HeldDir::Left;
                             } else {
                                 *state = move_player_left(state);
-                                left_has_repeat = false;
+                                held_dir = HeldDir::None;
                             }
                             key_frame.insert(code, frame);
                         }
@@ -246,10 +263,53 @@ fn game_loop<W: Write>(
                                 .get(&code)
                                 .is_some_and(|&last| frame.saturating_sub(last) <= 4);
                             if rapid {
-                                right_has_repeat = true;
+                                held_dir = HeldDir::Right;
                             } else {
                                 *state = move_player_right(state);
-                                right_has_repeat = false;
+                                held_dir = HeldDir::None;
+                            }
+                            key_frame.insert(code, frame);
+                        }
+                        // W: instant warp 10 steps on keydown (if direction held).
+                        KeyCode::Char('w') | KeyCode::Char('W')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            // Use held_dir as fallback: when F/W is pressed the
+                            // terminal may stop sending Repeat for direction keys, making
+                            // is_held() expire before the key is actually released.
+                            let dir_left = held_dir == HeldDir::Left
+                                || is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
+                            let dir_right = held_dir == HeldDir::Right
+                                || is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+                            if dir_left {
+                                *state = move_player_left_n(state, 10);
+                                warp_cooldown = WARP_COOLDOWN;
+                            } else if dir_right {
+                                *state = move_player_right_n(state, 10);
+                                warp_cooldown = WARP_COOLDOWN;
+                            }
+                            key_frame.insert(code, frame);
+                        }
+                        // F: instant 2-step move on keydown (if direction held).
+                        KeyCode::Char('f') | KeyCode::Char('F')
+                            if state.status == GameStatus::Playing =>
+                        {
+                            let dir_left = held_dir == HeldDir::Left
+                                || is_held(&key_frame, &release_frame, &KeyCode::Left, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('a'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('A'), frame);
+                            let dir_right = held_dir == HeldDir::Right
+                                || is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
+                                || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+                            if dir_left {
+                                *state = move_player_left_n(state, 2);
+                            } else if dir_right {
+                                *state = move_player_right_n(state, 2);
                             }
                             key_frame.insert(code, frame);
                         }
@@ -274,10 +334,10 @@ fn game_loop<W: Write>(
                 KeyEventKind::Repeat => {
                     match code {
                         KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
-                            left_has_repeat = true;
+                            held_dir = HeldDir::Left;
                         }
                         KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
-                            right_has_repeat = true;
+                            held_dir = HeldDir::Right;
                         }
                         _ => {}
                     }
@@ -293,11 +353,15 @@ fn game_loop<W: Write>(
         // Apply deferred releases — runs after all Repeat events this cycle.
         for code in deferred_releases {
             match code {
-                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
-                    left_has_repeat = false;
+                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
+                    if held_dir == HeldDir::Left =>
+                {
+                    held_dir = HeldDir::None;
                 }
-                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
-                    right_has_repeat = false;
+                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
+                    if held_dir == HeldDir::Right =>
+                {
+                    held_dir = HeldDir::None;
                 }
                 _ => {}
             }
@@ -322,12 +386,36 @@ fn game_loop<W: Write>(
             let right = is_held(&key_frame, &release_frame, &KeyCode::Right, frame)
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('d'), frame)
                 || is_held(&key_frame, &release_frame, &KeyCode::Char('D'), frame);
+            let fast = is_held(&key_frame, &release_frame, &KeyCode::Char('f'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('F'), frame);
+            let warp = is_held(&key_frame, &release_frame, &KeyCode::Char('w'), frame)
+                || is_held(&key_frame, &release_frame, &KeyCode::Char('W'), frame);
 
-            if move_cooldown <= 0.0 {
-                if left && left_has_repeat {
+            // held_dir is the authoritative "direction held" signal: set on Repeat events,
+            // cleared only on Release. is_held() alone is unreliable here because terminals
+            // stop sending direction-key Repeat events while F or W is also held.
+            let dir_left = left || held_dir == HeldDir::Left;
+            let dir_right = right || held_dir == HeldDir::Right;
+
+            if warp && warp_cooldown <= 0.0 {
+                if dir_left {
+                    *state = move_player_left_n(state, 10);
+                    warp_cooldown = WARP_COOLDOWN;
+                } else if dir_right {
+                    *state = move_player_right_n(state, 10);
+                    warp_cooldown = WARP_COOLDOWN;
+                }
+            } else if fast {
+                if dir_left {
+                    *state = move_player_left_n(state, 2);
+                } else if dir_right {
+                    *state = move_player_right_n(state, 2);
+                }
+            } else if move_cooldown <= 0.0 {
+                if held_dir == HeldDir::Left {
                     *state = move_player_left(state);
                     move_cooldown = MOVE_COOLDOWN;
-                } else if right && right_has_repeat {
+                } else if held_dir == HeldDir::Right {
                     *state = move_player_right(state);
                     move_cooldown = MOVE_COOLDOWN;
                 }
@@ -335,6 +423,7 @@ fn game_loop<W: Write>(
         }
 
         move_cooldown = (move_cooldown - 1.0).max(0.0);
+        warp_cooldown = (warp_cooldown - 1.0).max(0.0);
 
         if state.status == GameStatus::Playing {
             *state = tick(state, &mut rng);

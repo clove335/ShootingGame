@@ -433,7 +433,9 @@ fn draw_explosion<W: Write>(out: &mut W, exp: &Explosion) -> std::io::Result<()>
 fn draw_controls_hint<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std::io::Result<()> {
     out.queue(cursor::MoveTo(1, state.height.saturating_sub(1)))?;
     out.queue(style::SetForegroundColor(C_HINT))?;
-    out.queue(Print("← → / A D : Move   SPACE : Shoot   Q : Quit"))?;
+    out.queue(Print(
+        "← → / A D : Move   F+dir : Fast   W+dir : Warp×10   SPACE : Shoot   Q : Quit",
+    ))?;
     Ok(())
 }
 
