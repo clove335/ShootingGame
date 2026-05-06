@@ -353,15 +353,15 @@ fn game_loop<W: Write>(
         // Apply deferred releases — runs after all Repeat events this cycle.
         for code in deferred_releases {
             match code {
-                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
-                    if held_dir == HeldDir::Left {
-                        held_dir = HeldDir::None;
-                    }
+                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
+                    if held_dir == HeldDir::Left =>
+                {
+                    held_dir = HeldDir::None;
                 }
-                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if held_dir == HeldDir::Right {
-                        held_dir = HeldDir::None;
-                    }
+                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
+                    if held_dir == HeldDir::Right =>
+                {
+                    held_dir = HeldDir::None;
                 }
                 _ => {}
             }
