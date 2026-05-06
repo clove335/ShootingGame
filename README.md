@@ -87,7 +87,7 @@ The in-game HUD shows the top score for the current difficulty.
 Demo Mode runs the game autonomously — useful for watching gameplay, testing, or leaving the game running as an attract screen.
 
 ```bash
-cargo run -- --auto-play
+cargo run -- --demo-play
 ```
 
 The game starts immediately on **Hard** difficulty and restarts automatically after each Game Over with no human input required.
@@ -147,7 +147,7 @@ $ cargo build
 $ cargo run
 
 # Demo Mode
-$ cargo run -- --auto-play
+$ cargo run -- --demo-play
 ```
 
 The game saves scores to `shooting_game.db` in the directory where you run it.
