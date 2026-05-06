@@ -368,7 +368,7 @@ fn game_loop<W: Write>(
             release_frame.insert(code, frame);
         }
 
-        // ── Apply Autonomous Play actions ─────────────────────────────────────
+        // ── Apply Demo Mode actions ───────────────────────────────────────────
         if autoplay_enabled {
             if state.status == GameStatus::GameOver {
                 return Ok(false); // auto-restart: run() will loop back

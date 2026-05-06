@@ -5,7 +5,7 @@
 - Motivation
 - Gameplay
 - Controls
-- Autonomous Play Mode
+- Demo Mode
 - Installation
 - License
 
@@ -82,20 +82,33 @@ The in-game HUD shows the top score for the current difficulty.
 - **Hold** — 1 step on press, ~167 ms pause, then continuous movement at ~10 cols/sec
 
 
-## Autonomous Play Mode
+## Demo Mode
 
-For testing and demonstration purposes, the game includes an "Autonomous Play" mode.
+Demo Mode runs the game autonomously — useful for watching gameplay, testing, or leaving the game running as an attract screen.
 
-To run the game with auto-play enabled:
 ```bash
 cargo run -- --auto-play
 ```
 
-The bot uses simple heuristics to:
-- **Targeting**: Align itself with the lowest enemy or falling power-up on screen.
-- **Dodging**: Automatically move to avoid incoming enemy bullets if they are directly above.
-- **Aggression**: Fire weapons continuously and prioritize targets directly in front.
-- **Persistence**: Automatically restarts the game on "Hard" difficulty after a short delay upon Game Over.
+The game starts immediately on **Hard** difficulty and restarts automatically after each Game Over with no human input required.
+
+### How the bot works
+
+The bot is a rule-based heuristic, not a learning AI. Every frame it evaluates the current game state and picks one action:
+
+**Targeting**
+Scans all enemies and falling power-ups, picks the one closest to the bottom of the screen (highest threat / highest value), and steers toward its x-position. Power-ups are prioritised over enemies at equal depth.
+
+**Dodging**
+Before moving toward a target, checks whether any enemy bullet is falling in the same column (within ±1) and within a few rows above the player. If a bullet is detected, the bot sidesteps away from it. Dodge takes priority over targeting.
+
+**Shooting**
+Fires every frame an enemy is within ±2 columns of the player's x-position, and otherwise fires every 5 frames unconditionally.
+
+**Limitations**
+- No look-ahead: the bot reacts to the current frame only, it cannot predict enemy trajectories.
+- Single-threat dodge: only the nearest bullet is considered; flanking bullets from multiple angles can still hit.
+- No power-up timing: activates whatever power-up is caught without strategic planning.
 
 
 ## Installation
@@ -133,7 +146,7 @@ $ cargo build
 # Normal play
 $ cargo run
 
-# Autonomous Play (Testing mode)
+# Demo Mode
 $ cargo run -- --auto-play
 ```
 
