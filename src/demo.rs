@@ -1,7 +1,7 @@
 use crate::compute::{move_player_left, move_player_right, player_shoot};
 use crate::entities::{BulletOwner, EntireGameStateInfo};
 
-pub fn update_autoplay(state: &EntireGameStateInfo) -> EntireGameStateInfo {
+pub fn update_demo(state: &EntireGameStateInfo) -> EntireGameStateInfo {
     let mut current_state = state.clone();
 
     // 1. Simple heuristic: find the lowest enemy and align with it.
