@@ -609,7 +609,7 @@ pub fn tick(state: &EntireGameStateInfo, rng: &mut impl Rng) -> EntireGameStateI
         ..state.player.clone()
     };
 
-    let new_score = state.score + score_gain;
+    let new_score = state.score.saturating_add(score_gain);
     let new_high_score = state.high_score.max(new_score);
 
     // ── 12. Tick muzzle flash ─────────────────────────────────────────────────

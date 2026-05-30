@@ -513,17 +513,20 @@ fn tick_flame_bullet_moves_up_and_diagonally() {
 #[test]
 fn tick_flame_bullet_discarded_at_top_boundary() {
     let mut s = make_state();
-    // Place bullet one row above the discard threshold (y=2).
+    // y=3 -> 2 survives one tick, then y=2 -> 1 is discarded next tick.
     s.flame_bullets.push(FlameBullet {
         x: 20.0,
         y: 3.0,
         vx: 0.0,
     });
     let s2 = tick(&s, &mut seeded_rng());
-    // After tick y becomes 2, which triggers discard (< 2 fails; == 2 also discarded per filter ny < 2).
-    // Actually the filter is ny < 2.0 — y=2 survives. y=2→1 next tick would die.
-    // y=3→2: survives; y=2→1: dies. So at y=3 after one tick we still have the bullet.
-    let _ = s2; // just ensure no panic
+    assert_eq!(s2.flame_bullets.len(), 1);
+    assert!((s2.flame_bullets[0].y - 2.0).abs() < 0.01);
+    let s3 = tick(&s2, &mut seeded_rng());
+    assert!(
+        s3.flame_bullets.is_empty(),
+        "flame bullet must be discarded after crossing above y=2 boundary"
+    );
 }
 
 #[test]
@@ -1089,6 +1092,25 @@ fn tick_lives_saturate_at_zero() {
     });
     let s2 = tick(&s, &mut seeded_rng());
     assert_eq!(s2.player.lives, 0); // saturating_sub, no underflow
+}
+
+#[test]
+fn tick_score_saturates_at_u32_max() {
+    let mut s = make_state();
+    s.score = u32::MAX;
+    s.frame = 1;
+    s.enemies.push(Enemy {
+        x: 10,
+        y: 5,
+        kind: EnemyKind::Spacecraft,
+    });
+    s.bullets.push(Bullet {
+        x: 10,
+        y: 6,
+        owner: BulletOwner::Player,
+    }); // moves to y=5 -> kill worth +100
+    let s2 = tick(&s, &mut seeded_rng());
+    assert_eq!(s2.score, u32::MAX, "score must saturate at u32::MAX");
 }
 
 // ── tick — enemy bullet hitbox: 3-wide × 2-tall ──────────────────────────────

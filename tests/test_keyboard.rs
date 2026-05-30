@@ -21,6 +21,14 @@ fn key_never_pressed_is_not_held() {
 }
 
 #[test]
+fn release_without_press_is_not_held() {
+    let kf: HashMap<KeyCode, u64> = HashMap::new();
+    let mut rf: HashMap<KeyCode, u64> = HashMap::new();
+    release(&mut rf, KeyCode::Left, 10);
+    assert!(!is_held(&kf, &rf, &KeyCode::Left, 10));
+}
+
+#[test]
 fn key_pressed_this_frame_is_held() {
     let mut kf = HashMap::new();
     let rf = HashMap::new();
@@ -75,6 +83,16 @@ fn key_released_is_not_held_one_frame_past_grace() {
     assert!(!is_held(&kf, &rf, &KeyCode::Left, 11 + GRACE_PERIOD + 1));
 }
 
+#[test]
+fn release_after_press_expires_even_if_hold_window_not_expired() {
+    let mut kf = HashMap::new();
+    let mut rf = HashMap::new();
+    press(&mut kf, KeyCode::Left, 10);
+    release(&mut rf, KeyCode::Left, 11);
+    // Within HOLD_WINDOW, but beyond release grace => not held.
+    assert!(!is_held(&kf, &rf, &KeyCode::Left, 13));
+}
+
 // ── Re-press after release ────────────────────────────────────────────────────
 
 #[test]
@@ -86,6 +104,16 @@ fn repress_after_release_is_held() {
     // Re-press after a while
     press(&mut kf, KeyCode::Left, 20);
     assert!(is_held(&kf, &rf, &KeyCode::Left, 20));
+}
+
+#[test]
+fn press_and_release_same_frame_is_treated_as_held() {
+    let mut kf = HashMap::new();
+    let mut rf = HashMap::new();
+    press(&mut kf, KeyCode::Left, 10);
+    release(&mut rf, KeyCode::Left, 10);
+    // last_press >= last_release branch keeps key held.
+    assert!(is_held(&kf, &rf, &KeyCode::Left, 10));
 }
 
 // ── Ghostty false-release scenario ───────────────────────────────────────────
