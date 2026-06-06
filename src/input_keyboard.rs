@@ -1,7 +1,3 @@
-use std::collections::HashMap;
-
-use crossterm::event::KeyCode;
-
 /// A key is considered "held" if its last press/repeat event arrived within
 /// this many frames.  3 frames (~100 ms) is enough to stay live between
 /// consecutive Repeat events while expiring quickly after physical release.
@@ -16,27 +12,31 @@ pub const HOLD_WINDOW: u64 = 5;
 /// Space tap; if Space is held longer the player briefly stops then resumes.
 pub const GRACE_PERIOD: u64 = 1;
 
-/// Returns true if `key` is currently held.
-pub fn is_held(
-    key_frame: &HashMap<KeyCode, u64>,
-    release_frame: &HashMap<KeyCode, u64>,
-    key: &KeyCode,
-    frame: u64,
-) -> bool {
-    match key_frame.get(key) {
-        None => false,
-        Some(&last_press) => {
-            if frame.saturating_sub(last_press) > HOLD_WINDOW {
-                return false;
-            }
-            match release_frame.get(key) {
-                None => true,
-                Some(&last_release) => {
-                    // Still held if last press came after the release, OR we are
-                    // within the grace period of a (potentially false) release.
-                    last_press >= last_release || frame.saturating_sub(last_release) <= GRACE_PERIOD
-                }
-            }
+/// Per-key input state tracked in the game loop's key map.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyState {
+    /// Key was last pressed/repeated at this frame.
+    Held(u64),
+    /// Key was released at this frame; grace period may still keep it live.
+    Released(u64),
+}
+
+impl KeyState {
+    /// Returns true if the key should be treated as currently held.
+    pub fn is_held(&self, frame: u64) -> bool {
+        match self {
+            KeyState::Held(last) => frame.saturating_sub(*last) <= HOLD_WINDOW,
+            KeyState::Released(at) => frame.saturating_sub(*at) <= GRACE_PERIOD,
+        }
+    }
+
+    /// Returns the frame number if the key is in the `Held` state, else `None`.
+    /// Used to detect rapid re-press (classic-terminal OS key-repeat simulation).
+    pub fn as_held_frame(&self) -> Option<u64> {
+        if let KeyState::Held(f) = self {
+            Some(*f)
+        } else {
+            None
         }
     }
 }
