@@ -114,6 +114,7 @@ pub fn init_state(level: Level, width: u16, height: u16, high_score: u32) -> Ent
         slow_mo: false,
         muzzle_flash: 0,
         cheer_msg: None,
+        debug_input: String::new(),
     }
 }
 

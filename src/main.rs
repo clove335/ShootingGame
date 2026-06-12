@@ -2,7 +2,6 @@ mod db;
 
 use shooting_game::display;
 
-use std::collections::HashMap;
 use std::io::{stdout, BufWriter, Write};
 use std::sync::mpsc;
 use std::thread;
@@ -24,7 +23,7 @@ use shooting_game::compute::{
     player_shoot, tick,
 };
 use shooting_game::entities::{EntireGameStateInfo, GameStatus, Level};
-use shooting_game::input_keyboard::KeyState;
+use shooting_game::input_keyboard::{Dir, InputTracker};
 
 const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 
@@ -35,16 +34,6 @@ const FRAME: Duration = Duration::from_millis(33); // ≈30 FPS
 const MOVE_COOLDOWN: f64 = 0.1;
 /// Frames between warp jumps while W is held (≈3–4 warps/sec at 30 FPS).
 const WARP_COOLDOWN: f64 = 8.0;
-
-/// Tracks which direction the player is actively holding.
-/// A single ternary value instead of two independent bools — mutually exclusive
-/// by construction, so setting one side can never leave the other stale.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HeldDir {
-    None,
-    Left,
-    Right,
-}
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
@@ -165,38 +154,41 @@ fn show_menu<W: Write>(
     }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn dbg_key(code: KeyCode) -> &'static str {
+    match code {
+        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => "<",
+        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => ">",
+        KeyCode::Char(' ') => "_",
+        KeyCode::Char('f') | KeyCode::Char('F') => "F",
+        KeyCode::Char('w') | KeyCode::Char('W') => "W",
+        _ => "?",
+    }
+}
+
 // ── Game loop ─────────────────────────────────────────────────────────────────
 
 /// Returns `true` → quit program,  `false` → back to menu.
 ///
-/// Input model: instead of acting on each key event individually, we maintain
-/// a `keys` map that records each key's `KeyState` (Held or Released).  Each
-/// frame we check which keys are still "fresh" and apply all their effects
-/// simultaneously.  This allows Space + A/D to be held at the same time with
-/// no interference.
-///
-/// Works on two classes of terminal:
-/// * **Keyboard-enhancement capable** (Ghostty, kitty, etc.): proper
-///   `Press` / `Repeat` / `Release` events → keys transition to Released on release.
-/// * **Classic terminals**: only `Press` events (OS key-repeat shows as
-///   repeated `Press`).  Keys expire naturally after `HOLD_WINDOW` frames of
-///   silence, which is shorter than the OS repeat interval, so the key stays
-///   live while it is actively generating repeats.
+/// Input model: all key state lives in an [`InputTracker`] (see
+/// `input_keyboard.rs`).  Each frame we drain pending events into the tracker,
+/// then query `active_dir()` / `is_held()` to apply movement.  `enhanced`
+/// reflects whether the terminal actually delivers kitty-protocol Release
+/// events (raw Ghostty: yes; inside tmux: no) and selects the tracker's
+/// trust model — see `InputTracker` docs.
 fn game_loop<W: Write>(
     out: &mut W,
     state: &mut EntireGameStateInfo,
     rx: &mpsc::Receiver<Event>,
     demo_mode: bool,
+    enhanced: bool,
 ) -> std::io::Result<bool> {
     let mut rng = thread_rng();
 
-    let mut keys: HashMap<KeyCode, KeyState> = HashMap::new();
+    let mut tracker = InputTracker::new(enhanced);
     let mut move_cooldown: f64 = 0.0;
     let mut warp_cooldown: f64 = 0.0;
-    // Tracks which direction is actively held. Set to Left/Right on Repeat events
-    // (or rapid re-Press / F/W warp), cleared to None on Release. Ternary so
-    // opposite-side conflicts are impossible by construction.
-    let mut held_dir = HeldDir::None;
     let mut frame: u64 = 0;
     let mut first_frame = true;
 
@@ -205,10 +197,9 @@ fn game_loop<W: Write>(
         frame += 1;
 
         // ── Drain all pending input events (non-blocking) ─────────────────────
-        // Release events are deferred to the end of the drain so that a straggler
-        // Repeat arriving in the same OS-queue flush cannot re-enable a key that
-        // was just released.
-        let mut deferred_releases: Vec<KeyCode> = Vec::new();
+        tracker.begin_drain(frame);
+        // Compact event log: "P<" = Press Left, "T<" = Repeat Left, "X<" = Release Left.
+        let mut dbg_ev = String::new();
 
         while let Ok(Event::Key(KeyEvent {
             code,
@@ -218,8 +209,11 @@ fn game_loop<W: Write>(
         })) = rx.try_recv()
         {
             match kind {
-                // Press: record key + handle one-shot actions
+                // Press: record into tracker + handle one-shot actions.
                 KeyEventKind::Press => {
+                    if state.debug_mode {
+                        dbg_ev.push_str(&format!("P{} ", dbg_key(code)));
+                    }
                     match code {
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                             return Ok(true);
@@ -231,104 +225,6 @@ fn game_loop<W: Write>(
                             if state.status == GameStatus::GameOver =>
                         {
                             return Ok(false);
-                        }
-                        // Space: single-shot on press — not tracked in key_frame so it
-                        // never interferes with held movement keys.
-                        KeyCode::Char(' ') if state.status == GameStatus::Playing => {
-                            *state = player_shoot(state);
-                        }
-                        // Movement keys: move one step immediately on press.
-                        // For classic terminals the OS sends repeated Press events
-                        // instead of Repeat; treat a rapid second Press (within 4
-                        // frames) as a Repeat so continuous movement still works.
-                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
-                            if state.status == GameStatus::Playing =>
-                        {
-                            let rapid = keys
-                                .get(&code)
-                                .and_then(|s| s.as_held_frame())
-                                .is_some_and(|last| frame.saturating_sub(last) <= 4);
-                            if rapid {
-                                held_dir = HeldDir::Left;
-                            } else {
-                                *state = move_player_left(state);
-                                held_dir = HeldDir::None;
-                            }
-                            keys.insert(code, KeyState::Held(frame));
-                        }
-                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
-                            if state.status == GameStatus::Playing =>
-                        {
-                            let rapid = keys
-                                .get(&code)
-                                .and_then(|s| s.as_held_frame())
-                                .is_some_and(|last| frame.saturating_sub(last) <= 4);
-                            if rapid {
-                                held_dir = HeldDir::Right;
-                            } else {
-                                *state = move_player_right(state);
-                                held_dir = HeldDir::None;
-                            }
-                            keys.insert(code, KeyState::Held(frame));
-                        }
-                        // W: instant warp 10 steps on keydown (if direction held).
-                        KeyCode::Char('w') | KeyCode::Char('W')
-                            if state.status == GameStatus::Playing =>
-                        {
-                            // Use held_dir as fallback: when F/W is pressed the
-                            // terminal may stop sending Repeat for direction keys, making
-                            // is_held() expire before the key is actually released.
-                            let dir_left = held_dir == HeldDir::Left
-                                || keys.get(&KeyCode::Left).is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('a'))
-                                    .is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('A'))
-                                    .is_some_and(|s| s.is_held(frame));
-                            let dir_right = held_dir == HeldDir::Right
-                                || keys.get(&KeyCode::Right).is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('d'))
-                                    .is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('D'))
-                                    .is_some_and(|s| s.is_held(frame));
-                            if dir_left {
-                                *state = move_player_left_n(state, 10);
-                                warp_cooldown = WARP_COOLDOWN;
-                            } else if dir_right {
-                                *state = move_player_right_n(state, 10);
-                                warp_cooldown = WARP_COOLDOWN;
-                            }
-                            keys.insert(code, KeyState::Held(frame));
-                        }
-                        // F: instant 2-step move on keydown (if direction held).
-                        KeyCode::Char('f') | KeyCode::Char('F')
-                            if state.status == GameStatus::Playing =>
-                        {
-                            let dir_left = held_dir == HeldDir::Left
-                                || keys.get(&KeyCode::Left).is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('a'))
-                                    .is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('A'))
-                                    .is_some_and(|s| s.is_held(frame));
-                            let dir_right = held_dir == HeldDir::Right
-                                || keys.get(&KeyCode::Right).is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('d'))
-                                    .is_some_and(|s| s.is_held(frame))
-                                || keys
-                                    .get(&KeyCode::Char('D'))
-                                    .is_some_and(|s| s.is_held(frame));
-                            if dir_left {
-                                *state = move_player_left_n(state, 2);
-                            } else if dir_right {
-                                *state = move_player_right_n(state, 2);
-                            }
-                            keys.insert(code, KeyState::Held(frame));
                         }
                         // Backtick: toggle debug overlay.
                         KeyCode::Char('`') => {
@@ -342,47 +238,85 @@ fn game_loop<W: Write>(
                         KeyCode::Char('s') | KeyCode::Char('S') if state.debug_mode => {
                             state.slow_mo = !state.slow_mo;
                         }
-                        _ => {
-                            keys.insert(code, KeyState::Held(frame));
-                        }
-                    }
-                }
-                // Repeat: refresh timestamp and mark direction as held.
-                KeyEventKind::Repeat => {
-                    match code {
-                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => {
-                            held_dir = HeldDir::Left;
-                        }
-                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => {
-                            held_dir = HeldDir::Right;
-                        }
                         _ => {}
                     }
-                    keys.insert(code, KeyState::Held(frame));
+
+                    // `rapid` = second press of a direction key within RAPID_WINDOW
+                    // (classic-terminal key-repeat): continuous movement takes over,
+                    // so no single-step move is applied for it.
+                    let rapid = tracker.record_press(code, frame);
+
+                    if state.status == GameStatus::Playing {
+                        match code {
+                            KeyCode::Char(' ') => {
+                                *state = player_shoot(state);
+                            }
+                            // Movement keys: move one step immediately on press.
+                            KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') if !rapid => {
+                                *state = move_player_left(state);
+                            }
+                            KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') if !rapid => {
+                                *state = move_player_right(state);
+                            }
+                            // W: instant warp 10 steps on keydown (if direction active).
+                            KeyCode::Char('w') | KeyCode::Char('W') => {
+                                match tracker.active_dir(frame) {
+                                    Some(Dir::Left) => {
+                                        *state = move_player_left_n(state, 10);
+                                        warp_cooldown = WARP_COOLDOWN;
+                                    }
+                                    Some(Dir::Right) => {
+                                        *state = move_player_right_n(state, 10);
+                                        warp_cooldown = WARP_COOLDOWN;
+                                    }
+                                    None => {}
+                                }
+                            }
+                            // F: instant 2-step move on keydown (if direction active).
+                            KeyCode::Char('f') | KeyCode::Char('F') => {
+                                match tracker.active_dir(frame) {
+                                    Some(Dir::Left) => *state = move_player_left_n(state, 2),
+                                    Some(Dir::Right) => *state = move_player_right_n(state, 2),
+                                    None => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
-                // Release: defer until all Press/Repeat events this frame are handled.
+                KeyEventKind::Repeat => {
+                    if state.debug_mode {
+                        dbg_ev.push_str(&format!("T{} ", dbg_key(code)));
+                    }
+                    tracker.record_repeat(code, frame);
+                }
                 KeyEventKind::Release => {
-                    deferred_releases.push(code);
+                    if state.debug_mode {
+                        dbg_ev.push_str(&format!("X{} ", dbg_key(code)));
+                    }
+                    tracker.record_release(code);
                 }
             }
         }
 
-        // Apply deferred releases — runs after all Repeat events this cycle.
-        for code in deferred_releases {
-            match code {
-                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A')
-                    if held_dir == HeldDir::Left =>
-                {
-                    held_dir = HeldDir::None;
-                }
-                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D')
-                    if held_dir == HeldDir::Right =>
-                {
-                    held_dir = HeldDir::None;
-                }
-                _ => {}
-            }
-            keys.insert(code, KeyState::Released(frame));
+        // Apply deferred releases (false-release detection lives in the tracker).
+        tracker.end_drain(frame);
+
+        // ── Input diagnostics (debug overlay) ────────────────────────────────
+        if state.debug_mode {
+            let fmt_dir = |d: Option<Dir>| match d {
+                Some(Dir::Left) => "L",
+                Some(Dir::Right) => "R",
+                None => "-",
+            };
+            state.debug_input = format!(
+                " kbd:{} raw:{} act:{} ndp:{} ev:[{}]",
+                if enhanced { "ENH" } else { "CLS" },
+                fmt_dir(tracker.raw_dir()),
+                fmt_dir(tracker.active_dir(frame)),
+                tracker.non_dir_press_seen() as u8,
+                dbg_ev.trim_end(),
+            );
         }
 
         // ── Apply Demo Mode actions ───────────────────────────────────────────
@@ -397,41 +331,45 @@ fn game_loop<W: Write>(
 
         // ── Apply held-key actions every frame ────────────────────────────────
         if state.status == GameStatus::Playing {
-            let held = |kc: &KeyCode| keys.get(kc).is_some_and(|s| s.is_held(frame));
-            let left =
-                held(&KeyCode::Left) || held(&KeyCode::Char('a')) || held(&KeyCode::Char('A'));
-            let right =
-                held(&KeyCode::Right) || held(&KeyCode::Char('d')) || held(&KeyCode::Char('D'));
-            let fast = held(&KeyCode::Char('f')) || held(&KeyCode::Char('F'));
-            let warp = held(&KeyCode::Char('w')) || held(&KeyCode::Char('W'));
+            let fast = tracker.is_held(&KeyCode::Char('f'), frame)
+                || tracker.is_held(&KeyCode::Char('F'), frame);
+            let warp = tracker.is_held(&KeyCode::Char('w'), frame)
+                || tracker.is_held(&KeyCode::Char('W'), frame);
 
-            // held_dir is the authoritative "direction held" signal: set on Repeat events,
-            // cleared only on Release. is_held() alone is unreliable here because terminals
-            // stop sending direction-key Repeat events while F or W is also held.
-            let dir_left = left || held_dir == HeldDir::Left;
-            let dir_right = right || held_dir == HeldDir::Right;
+            // active_dir() = engaged direction AND fresh key events within
+            // HOLD_WINDOW. On terminals that never send Release (e.g. tmux with
+            // extended-keys off) the freshness gate is the only stop signal.
+            let dir = tracker.active_dir(frame);
 
             if warp && warp_cooldown <= 0.0 {
-                if dir_left {
-                    *state = move_player_left_n(state, 10);
-                    warp_cooldown = WARP_COOLDOWN;
-                } else if dir_right {
-                    *state = move_player_right_n(state, 10);
-                    warp_cooldown = WARP_COOLDOWN;
+                match dir {
+                    Some(Dir::Left) => {
+                        *state = move_player_left_n(state, 10);
+                        warp_cooldown = WARP_COOLDOWN;
+                    }
+                    Some(Dir::Right) => {
+                        *state = move_player_right_n(state, 10);
+                        warp_cooldown = WARP_COOLDOWN;
+                    }
+                    None => {}
                 }
             } else if fast {
-                if dir_left {
-                    *state = move_player_left_n(state, 2);
-                } else if dir_right {
-                    *state = move_player_right_n(state, 2);
+                match dir {
+                    Some(Dir::Left) => *state = move_player_left_n(state, 2),
+                    Some(Dir::Right) => *state = move_player_right_n(state, 2),
+                    None => {}
                 }
             } else if move_cooldown <= 0.0 {
-                if held_dir == HeldDir::Left {
-                    *state = move_player_left(state);
-                    move_cooldown = MOVE_COOLDOWN;
-                } else if held_dir == HeldDir::Right {
-                    *state = move_player_right(state);
-                    move_cooldown = MOVE_COOLDOWN;
+                match dir {
+                    Some(Dir::Left) => {
+                        *state = move_player_left(state);
+                        move_cooldown = MOVE_COOLDOWN;
+                    }
+                    Some(Dir::Right) => {
+                        *state = move_player_right(state);
+                        move_cooldown = MOVE_COOLDOWN;
+                    }
+                    None => {}
                 }
             }
         }
@@ -463,16 +401,22 @@ fn main() -> std::io::Result<()> {
     let mut out = BufWriter::new(raw_out);
 
     terminal::enable_raw_mode()?;
+
+    // Query whether the terminal really supports the kitty keyboard protocol
+    // (Release/Repeat events).  Writing the push sequence alone proves nothing:
+    // tmux silently swallows it, so `.execute().is_ok()` is always true even
+    // when no Release event will ever arrive.  The query must happen before
+    // the event-reader thread spawns, because it reads the tty response itself.
+    let keyboard_enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false);
+
     out.execute(terminal::EnterAlternateScreen)?;
     out.execute(cursor::Hide)?;
 
-    // Request key-release (and key-repeat) events from the terminal.
-    // Ghostty / kitty-protocol terminals support this; others fall back gracefully.
-    let keyboard_enhanced = out
-        .execute(PushKeyboardEnhancementFlags(
+    if keyboard_enhanced {
+        out.execute(PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
-        ))
-        .is_ok();
+        ))?;
+    }
 
     // Dedicate a thread exclusively to blocking event reads, sending them
     // through a channel so the game loop never has to block on I/O.
@@ -485,7 +429,7 @@ fn main() -> std::io::Result<()> {
         }
     });
 
-    let result = run(&mut out, &rx, demo_mode);
+    let result = run(&mut out, &rx, demo_mode, keyboard_enhanced);
 
     // Always restore the terminal
     if keyboard_enhanced {
@@ -498,7 +442,12 @@ fn main() -> std::io::Result<()> {
     result
 }
 
-fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>, demo_mode: bool) -> std::io::Result<()> {
+fn run<W: Write>(
+    out: &mut W,
+    rx: &mpsc::Receiver<Event>,
+    demo_mode: bool,
+    enhanced: bool,
+) -> std::io::Result<()> {
     let username = std::env::var("USER").unwrap_or_else(|_| "Player".to_string());
     let db_conn = db::open();
     let mut high_score = db_conn.as_ref().map_or(0, db::load_best_score);
@@ -518,7 +467,7 @@ fn run<W: Write>(out: &mut W, rx: &mpsc::Receiver<Event>, demo_mode: bool) -> st
                     .map_or(0, |c| db::load_top_score(c, &level));
                 let (width, height) = terminal::size()?;
                 let mut state = init_state(level, width, height, difficulty_best);
-                let quit = game_loop(out, &mut state, rx, demo_mode)?;
+                let quit = game_loop(out, &mut state, rx, demo_mode, enhanced)?;
 
                 if state.status == GameStatus::GameOver {
                     if let Some(ref conn) = db_conn {

@@ -44,6 +44,7 @@ fn game_state_clone_is_independent() {
         slow_mo: false,
         muzzle_flash: 0,
         cheer_msg: None,
+        debug_input: String::new(),
     };
     let mut cloned = original.clone();
 

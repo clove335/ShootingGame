@@ -487,6 +487,7 @@ fn draw_debug_overlay<W: Write>(out: &mut W, state: &EntireGameStateInfo) -> std
             enemy_bullets
         ),
         format!(" PU:{:<18} GOD:{}  SLOW:{}", pu, god, slow),
+        state.debug_input.clone(),
     ];
 
     for (i, line) in lines.iter().enumerate() {
