@@ -30,6 +30,7 @@ fn make_state() -> EntireGameStateInfo {
         slow_mo: false,
         muzzle_flash: 0,
         cheer_msg: None,
+        debug_input: String::new(),
     }
 }
 

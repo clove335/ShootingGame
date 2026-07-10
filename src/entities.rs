@@ -136,4 +136,7 @@ pub struct EntireGameStateInfo {
     pub muzzle_flash: u32,
     /// Active cheer message (milestone reached) and frames remaining.
     pub cheer_msg: Option<(String, u32)>,
+    /// One-line input diagnostics written each frame by the game loop.
+    /// Only shown when debug_mode is on.
+    pub debug_input: String,
 }

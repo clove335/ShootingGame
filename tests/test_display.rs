@@ -128,6 +128,7 @@ fn make_state(width: u16, height: u16) -> EntireGameStateInfo {
         slow_mo: false,
         muzzle_flash: 0,
         cheer_msg: None,
+        debug_input: String::new(),
     }
 }
 
