@@ -310,13 +310,25 @@ fn game_loop<W: Write>(
                 None => "-",
             };
             state.debug_input = format!(
-                " kbd:{} raw:{} act:{} ndp:{} ev:[{}]",
+                " kbd:{} raw:{} act:{} ph:{} ndp:{} ev:[{}]",
                 if enhanced { "ENH" } else { "CLS" },
                 fmt_dir(tracker.raw_dir()),
                 fmt_dir(tracker.active_dir(frame)),
+                tracker.is_phantom() as u8,
                 tracker.non_dir_press_seen() as u8,
                 dbg_ev.trim_end(),
             );
+            // Persist the event stream so terminal quirks can be inspected
+            // after the fact (the overlay is overwritten every frame).
+            if !dbg_ev.is_empty() {
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("/tmp/shooting_game_input.log")
+                {
+                    let _ = writeln!(f, "f{}{}", frame, state.debug_input);
+                }
+            }
         }
 
         // ── Apply Demo Mode actions ───────────────────────────────────────────

@@ -118,6 +118,16 @@ pub struct InputTracker {
     enhanced: bool,
     keys: HashMap<KeyCode, KeyState>,
     held_dir: Option<Dir>,
+    /// Classic mode only: the engaged direction key is believed physically
+    /// held even though the terminal has stopped sending events for it.
+    /// Entered when F/W is pressed mid-glide — OS key-repeat switches to the
+    /// newest key permanently (it never resumes for the direction key, not
+    /// even after F/W is released), so the direction key falls silent while
+    /// still held, and its release is equally silent.  With no signal either
+    /// way, silence stops meaning "released": the freshness gates are
+    /// bypassed and the engagement stays on trust until the next
+    /// direction-key event (a tap stops the glide).
+    phantom: bool,
     /// Frame of the last movement-related Press/Repeat (see `refreshes_movement`).
     last_movement_activity: u64,
     deferred_releases: Vec<KeyCode>,
@@ -130,6 +140,7 @@ impl InputTracker {
             enhanced,
             keys: HashMap::new(),
             held_dir: None,
+            phantom: false,
             last_movement_activity: 0,
             deferred_releases: Vec::new(),
             has_non_dir_press: false,
@@ -169,7 +180,12 @@ impl InputTracker {
     pub fn begin_drain(&mut self, frame: u64) {
         self.deferred_releases.clear();
         self.has_non_dir_press = false;
-        if self.held_dir.is_some() && self.movement_gap(frame) > self.memory_limit() {
+        // A phantom engagement never expires on silence: the terminal sends
+        // nothing for that key while it is held, so only a Release ends it.
+        if !self.phantom
+            && self.held_dir.is_some()
+            && self.movement_gap(frame) > self.memory_limit()
+        {
             self.held_dir = None;
         }
     }
@@ -189,10 +205,20 @@ impl InputTracker {
                     .and_then(|s| s.as_held_frame())
                     .is_some_and(|last| frame.saturating_sub(last) <= RAPID_WINDOW);
                 self.held_dir = if rapid { Some(dir) } else { None };
+                // Direction events are flowing again → back to normal tracking.
+                self.phantom = false;
                 rapid
             }
             None => {
                 self.has_non_dir_press = true;
+                // Classic terminals: an F/W press steals the OS key-repeat
+                // from the direction key for good (no resume on release).
+                // From here on silence is expected, not a stop signal — the
+                // engagement goes phantom.  Enhanced terminals handle this
+                // via the false-release path in end_drain instead.
+                if !self.enhanced && refreshes_movement(code) && self.held_dir.is_some() {
+                    self.phantom = true;
+                }
                 false
             }
         };
@@ -207,6 +233,8 @@ impl InputTracker {
         }
         if let Some(dir) = dir_of(code) {
             self.held_dir = Some(dir);
+            // Direction events are flowing again → back to normal tracking.
+            self.phantom = false;
         }
         self.keys.insert(code, KeyState::Held(frame));
     }
@@ -233,6 +261,7 @@ impl InputTracker {
                 Some(dir) => {
                     if self.held_dir == Some(dir) {
                         self.held_dir = None;
+                        self.phantom = false;
                     }
                     self.keys.insert(code, KeyState::Released(frame));
                 }
@@ -258,10 +287,11 @@ impl InputTracker {
     /// while the engagement itself is remembered for `CLASSIC_ENGAGE_MEMORY`
     /// frames so a combo paused by the OS key-repeat delay can resume.  In
     /// enhanced mode a true Release stops the player instantly and the long
-    /// silence limit is only a safety net.
+    /// silence limit is only a safety net.  A phantom engagement bypasses
+    /// the freshness gate entirely: the key is silent BECAUSE it is held.
     pub fn active_dir(&self, frame: u64) -> Option<Dir> {
         self.held_dir
-            .filter(|_| self.movement_gap(frame) <= self.active_limit())
+            .filter(|_| self.phantom || self.movement_gap(frame) <= self.active_limit())
     }
 
     /// Raw engaged direction without the freshness gate (debug overlay).
@@ -272,5 +302,10 @@ impl InputTracker {
     /// True if a non-direction key was pressed in the current drain (debug).
     pub fn non_dir_press_seen(&self) -> bool {
         self.has_non_dir_press
+    }
+
+    /// True if the engaged direction is in the phantom state (debug).
+    pub fn is_phantom(&self) -> bool {
+        self.phantom
     }
 }
