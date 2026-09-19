@@ -226,26 +226,79 @@ fn classic_w_press_keeps_direction_active() {
     }
     assert_eq!(t.active_dir(14), Some(Dir::Left));
 
-    // W pressed: direction key goes silent from here on (OS repeat switches
-    // to the newest key).
+    // W pressed mid-glide: direction key goes silent from here on (OS repeat
+    // switches to the newest key) → the engagement goes phantom.
     drain(&mut t, 15, &[('P', KeyCode::Char('w'))]);
     assert_eq!(t.active_dir(15), Some(Dir::Left)); // warp fires with direction
 
-    // OS initial repeat delay (~12 frames): no events at all.  Movement
-    // pauses after the active gate…
+    // OS initial repeat delay (~12 frames): no events at all.  The phantom
+    // engagement glides straight through the gap — no momentary stop.
     idle(&mut t, 16..=26);
-    assert_eq!(t.active_dir(26), None);
+    assert_eq!(t.active_dir(26), Some(Dir::Left));
 
-    // …but the engagement is remembered: W's own repeats arrive within
-    // CLASSIC_ENGAGE_MEMORY and the combo RESUMES.
+    // W's own repeats arrive; the combo keeps moving.
     for f in 27..=40 {
         drain(&mut t, f, &[('P', KeyCode::Char('w'))]);
         assert_eq!(t.active_dir(f), Some(Dir::Left), "frame {}", f);
     }
 
-    // Everything released → silence → stop.
-    idle(&mut t, 41..=40 + HOLD_WINDOW + 1);
-    assert_eq!(t.active_dir(40 + HOLD_WINDOW + 1), None);
+    // W released, Left still physically held: total silence — the glide
+    // must CONTINUE (this was the bug: it stopped within ~0.5 s).
+    idle(&mut t, 41..=200);
+    assert_eq!(t.active_dir(200), Some(Dir::Left));
+
+    // A direction tap is the explicit stop signal in classic mode.
+    drain(&mut t, 201, &[('P', KeyCode::Left)]);
+    assert_eq!(t.active_dir(201), None);
+}
+
+// ── Classic terminal: the tmux F/W-release bug ────────────────────────────────
+// Reproduces the reported bug: glide ← / → , press F (fast move), release F
+// while STILL holding the direction key.  In tmux nothing arrives after the
+// F release — macOS auto-repeat never resumes for the direction key — so the
+// old silence expiry stopped the ship even though the key was held.
+
+#[test]
+fn classic_f_release_glide_continues_until_dir_tap() {
+    let mut t = classic();
+    // Right held: OS repeat presses engage the glide.
+    drain(&mut t, 10, &[('P', KeyCode::Right)]);
+    for f in 11..=15 {
+        drain(&mut t, f, &[('P', KeyCode::Right)]);
+    }
+    assert_eq!(t.active_dir(15), Some(Dir::Right));
+
+    // F pressed mid-glide: OS repeat switches to F; Right goes silent.
+    drain(&mut t, 16, &[('P', KeyCode::Char('f'))]);
+    // F repeats after the OS initial delay.
+    idle(&mut t, 17..=25);
+    for f in 26..=35 {
+        drain(&mut t, f, &[('P', KeyCode::Char('f'))]);
+        assert_eq!(t.active_dir(f), Some(Dir::Right), "frame {}", f);
+    }
+
+    // F released, Right still physically held: TOTAL silence from here on.
+    // The glide must continue — indefinitely, because no event can ever
+    // distinguish "Right still held" from "Right released" in classic mode.
+    idle(&mut t, 36..=300);
+    assert_eq!(t.active_dir(300), Some(Dir::Right));
+
+    // Explicit stop: a single (non-rapid) direction tap disengages.
+    drain(&mut t, 301, &[('P', KeyCode::Right)]);
+    assert_eq!(t.active_dir(301), None);
+    // …and the tap's OS repeats re-engage a fresh glide as usual.
+    drain(&mut t, 303, &[('P', KeyCode::Right)]);
+    assert_eq!(t.active_dir(303), Some(Dir::Right));
+}
+
+#[test]
+fn classic_fw_press_without_glide_does_not_engage_phantom() {
+    let mut t = classic();
+    // F/W tapped with no direction engaged: nothing to keep alive.
+    drain(&mut t, 10, &[('P', KeyCode::Char('f'))]);
+    drain(&mut t, 11, &[('P', KeyCode::Char('w'))]);
+    idle(&mut t, 12..=40);
+    assert_eq!(t.active_dir(40), None);
 }
 
 #[test]
